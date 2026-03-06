@@ -1,0 +1,116 @@
+{
+  "projectType": "frontend",
+  "projectName": "LogiScan",
+  "projectDescription": "A Flutter mobile application for package scanning, tracking, and logistics management with AI-powered measurement capabilities.",
+  "theme": "palm",
+  "primaryColor": "#3dcffc",
+  "lightColor": "#0b5b9c",
+  "darkColor": "#ffffff",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/scanning",
+              "features/authentication",
+              "features/package-tracking",
+              "features/image-processing",
+              "features/ai-measurement"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/services",
+              "architecture/state-management",
+              "architecture/api-integration"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/setup",
+              "development/project-structure",
+              "development/theming",
+              "development/error-handling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Services",
+            "pages": [
+              "api/auth-service",
+              "api/measurement-service",
+              "api/http-service",
+              "api/storage-service"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/auth-models",
+              "api/measurement-models",
+              "api/tracking-models",
+              "api/api-response"
+            ]
+          },
+          {
+            "group": "API Endpoints",
+            "pages": [
+              "api/endpoints/authentication",
+              "api/endpoints/package-processing",
+              "api/endpoints/tracking"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "QR Code and Barcode Scanning",
+    "AI-Powered Package Measurement",
+    "Package Tracking and Verification",
+    "Image-Based Package Owner Recognition",
+    "Token-Based Authentication with Auto-Refresh",
+    "Secure Credential Storage",
+    "Real-Time Package Photo Management",
+    "Firebase Integration for Crash Analytics",
+    "Version Management and Update Notifications"
+  ],
+  "publicApiSurface": [
+    "AuthService.login()",
+    "AuthService.logout()",
+    "AuthService.refreshTokenIfNeeded()",
+    "MeasurementService.processMeasurementData()",
+    "MeasurementService.registerPackage()",
+    "MeasurementService.verifyTrackingNumber()",
+    "MeasurementService.getPackageTrackingDetails()",
+    "MeasurementService.getPackageOwnerByImage()",
+    "MeasurementService.uploadImagesWithoutId()",
+    "MeasurementService.registerPackageImages()",
+    "MeasurementService.deleteTrackingPackageImages()",
+    "HttpService.get()",
+    "HttpService.post()",
+    "HttpService.delete()",
+    "StorageService.setToken()",
+    "StorageService.getToken()",
+    "SecureCredentialsService.getCredentials()",
+    "SecureCredentialsService.clearCredentials()"
+  ]
+}
