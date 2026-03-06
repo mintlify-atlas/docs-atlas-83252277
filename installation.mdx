@@ -1,0 +1,548 @@
+---
+title: 'Installation'
+description: 'Complete guide to installing and configuring LogiScan'
+icon: 'download'
+---
+
+This comprehensive guide covers everything you need to install, configure, and run LogiScan on your development machine.
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Flutter SDK" icon="mobile">
+    Version 3.9.2 or higher
+  </Card>
+  
+  <Card title="Dart SDK" icon="code">
+    Version 3.9.2 or higher (included with Flutter)
+  </Card>
+  
+  <Card title="Android Studio" icon="android">
+    For Android development and emulators
+  </Card>
+  
+  <Card title="Xcode" icon="apple">
+    For iOS development (macOS only)
+  </Card>
+</CardGroup>
+
+### Operating System Support
+
+- **Windows**: 10 or higher (64-bit)
+- **macOS**: 10.14 or higher
+- **Linux**: Ubuntu 20.04 LTS or higher
+
+<Note>
+iOS development requires a Mac with Xcode. You cannot build iOS apps on Windows or Linux.
+</Note>
+
+## Install Flutter
+
+<Steps>
+  <Step title="Download Flutter SDK">
+    Visit the [official Flutter installation page](https://docs.flutter.dev/get-started/install) and download the appropriate SDK for your operating system.
+
+    <CodeGroup>
+    ```bash macOS
+    # Using git
+    git clone https://github.com/flutter/flutter.git -b stable
+    ```
+
+    ```bash Linux
+    # Using git
+    git clone https://github.com/flutter/flutter.git -b stable
+    ```
+
+    ```powershell Windows
+    # Download the installer from flutter.dev
+    # Or use git
+    git clone https://github.com/flutter/flutter.git -b stable
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Add Flutter to PATH">
+    Add Flutter to your system PATH variable:
+
+    <CodeGroup>
+    ```bash macOS/Linux
+    export PATH="$PATH:`pwd`/flutter/bin"
+    
+    # Add to ~/.bashrc or ~/.zshrc for persistence
+    echo 'export PATH="$PATH:/path/to/flutter/bin"' >> ~/.bashrc
+    ```
+
+    ```powershell Windows
+    # Add to System Environment Variables
+    # Search "Environment Variables" in Windows Settings
+    # Add the flutter\bin directory to Path
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Verify Installation">
+    Run Flutter doctor to check your installation:
+
+    ```bash
+    flutter doctor
+    ```
+
+    This command checks your environment and displays a report. Address any issues marked with ❌ or ⚠️.
+  </Step>
+</Steps>
+
+## Platform-Specific Setup
+
+### Android Development
+
+<Steps>
+  <Step title="Install Android Studio">
+    Download and install [Android Studio](https://developer.android.com/studio).
+
+    During installation, ensure you install:
+    - Android SDK
+    - Android SDK Platform-Tools
+    - Android SDK Build-Tools
+    - Android Emulator
+  </Step>
+
+  <Step title="Configure Android SDK">
+    Open Android Studio and navigate to:
+    
+    **Settings → Appearance & Behavior → System Settings → Android SDK**
+
+    Install the following SDK platforms:
+    - Android SDK Platform (API 33 or higher recommended)
+    - Android SDK Command-line Tools
+
+    <Note>
+    LogiScan's minimum SDK is defined in `android/app/build.gradle.kts`. The app uses Java 11 compatibility.
+    </Note>
+  </Step>
+
+  <Step title="Accept Android Licenses">
+    Accept all Android SDK licenses:
+
+    ```bash
+    flutter doctor --android-licenses
+    ```
+
+    Type `y` to accept each license.
+  </Step>
+
+  <Step title="Set up Android Emulator">
+    Create a virtual device in Android Studio:
+
+    **Tools → Device Manager → Create Virtual Device**
+
+    Recommended configuration:
+    - Device: Pixel 5 or newer
+    - System Image: Android 13 (API 33) or higher
+    - RAM: 2048 MB or more
+  </Step>
+</Steps>
+
+### iOS Development (macOS only)
+
+<Steps>
+  <Step title="Install Xcode">
+    Install Xcode from the Mac App Store (version 13 or higher).
+
+    After installation, configure the command-line tools:
+
+    ```bash
+    sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
+    sudo xcodebuild -runFirstLaunch
+    ```
+  </Step>
+
+  <Step title="Install CocoaPods">
+    CocoaPods is required for iOS dependencies:
+
+    ```bash
+    sudo gem install cocoapods
+    ```
+  </Step>
+
+  <Step title="Set up iOS Simulator">
+    Launch Xcode and install iOS simulators:
+
+    **Xcode → Settings → Platforms**
+
+    Download the latest iOS simulator runtime.
+  </Step>
+
+  <Step title="Verify iOS Setup">
+    Check your iOS setup:
+
+    ```bash
+    flutter doctor
+    ```
+
+    Ensure all iOS-related checks pass.
+  </Step>
+</Steps>
+
+## Firebase Configuration
+
+LogiScan uses Firebase for crash reporting, analytics, and backend services.
+
+<Steps>
+  <Step title="Install Firebase CLI">
+    Install the Firebase CLI globally:
+
+    ```bash
+    npm install -g firebase-tools
+    ```
+
+    Login to Firebase:
+
+    ```bash
+    firebase login
+    ```
+  </Step>
+
+  <Step title="Install FlutterFire CLI">
+    Install the FlutterFire CLI for easy Firebase configuration:
+
+    ```bash
+    dart pub global activate flutterfire_cli
+    ```
+  </Step>
+
+  <Step title="Configure Firebase Project">
+    LogiScan comes pre-configured with a Firebase project. However, for your own deployment, you'll need to:
+
+    1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+    2. Enable **Crashlytics** in your Firebase console
+    3. Run FlutterFire configuration:
+
+    ```bash
+    flutterfire configure
+    ```
+
+    This will:
+    - Generate `lib/firebase_options.dart`
+    - Create `android/app/google-services.json`
+    - Create `ios/Runner/GoogleService-Info.plist` (if iOS is configured)
+
+    <Warning>
+    The existing Firebase configuration in the repository is for development only. Replace it with your own credentials for production.
+    </Warning>
+  </Step>
+
+  <Step title="Verify Firebase Integration">
+    Check that Firebase files are in place:
+
+    ```bash
+    # Android
+    ls android/app/google-services.json
+
+    # iOS (if applicable)
+    ls ios/Runner/GoogleService-Info.plist
+
+    # Dart options
+    ls lib/firebase_options.dart
+    ```
+
+    The `android/app/build.gradle.kts` file should include the Google services plugin:
+
+    ```kotlin android/app/build.gradle.kts:1-9
+    plugins {
+        id("com.android.application")
+        // START: FlutterFire Configuration
+        id("com.google.gms.google-services")
+        // END: FlutterFire Configuration
+        id("kotlin-android")
+        // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+        id("dev.flutter.flutter-gradle-plugin")
+    }
+    ```
+  </Step>
+</Steps>
+
+## Project Dependencies
+
+LogiScan uses several key Flutter packages. After cloning the project, install all dependencies:
+
+```bash
+flutter pub get
+```
+
+### Core Dependencies
+
+From `pubspec.yaml:30-44`:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+
+  firebase_core: ^3.8.1
+  firebase_crashlytics: ^4.1.3
+  http: ^1.2.2
+  provider: ^6.1.2
+  shared_preferences: ^2.3.2
+  flutter_secure_storage: ^9.2.2
+  package_info_plus: ^8.0.2
+  mobile_scanner: ^6.0.2
+  image_picker: ^1.1.2
+  image: ^4.2.0
+  camera: ^0.11.3
+```
+
+<AccordionGroup>
+  <Accordion title="Firebase Packages" icon="fire">
+    - **firebase_core**: Firebase initialization and core functionality
+    - **firebase_crashlytics**: Automatic crash reporting and error tracking
+  </Accordion>
+
+  <Accordion title="State Management" icon="sitemap">
+    - **provider**: State management solution for authentication and app state
+  </Accordion>
+
+  <Accordion title="Storage" icon="database">
+    - **shared_preferences**: Local key-value storage for settings and tokens
+    - **flutter_secure_storage**: Encrypted storage for sensitive credentials
+  </Accordion>
+
+  <Accordion title="Camera & Scanning" icon="camera">
+    - **mobile_scanner**: High-performance barcode and QR code scanning
+    - **image_picker**: Select images from gallery or capture with camera
+    - **camera**: Low-level camera access for custom implementations
+    - **image**: Image processing and manipulation
+  </Accordion>
+
+  <Accordion title="Networking" icon="network-wired">
+    - **http**: HTTP client for API communication
+    - **package_info_plus**: Access to app version and build information
+  </Accordion>
+</AccordionGroup>
+
+## Environment Configuration
+
+Configure LogiScan for your environment by updating the API configuration.
+
+### API Settings
+
+Edit `lib/core/config/api_config.dart:9-19`:
+
+```dart
+/// URL base de la API de desarrollo
+static const String devBaseUrl = 'http://100.104.120.121:82';
+
+/// URL base de la API de producción
+static const String prodBaseUrl = 'https://beehive.gbilogistics.net';
+
+/// Modo de desarrollo (cambiar a false para producción)
+static const bool isDevelopment = false;
+
+/// URL base de la API (selecciona según el modo)
+static String get baseUrl => isDevelopment ? devBaseUrl : prodBaseUrl;
+```
+
+<Tabs>
+  <Tab title="Development">
+    For local development and testing:
+
+    ```dart
+    static const bool isDevelopment = true;
+    ```
+
+    This uses the development API endpoint.
+  </Tab>
+
+  <Tab title="Production">
+    For production builds:
+
+    ```dart
+    static const bool isDevelopment = false;
+    ```
+
+    This connects to the production API at `beehive.gbilogistics.net`.
+  </Tab>
+</Tabs>
+
+### Application ID
+
+The Android application ID is configured in `android/app/build.gradle.kts:12-27`:
+
+```kotlin
+android {
+    namespace = "com.gbi_logistics.logiscan"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    defaultConfig {
+        applicationId = "com.gbi_logistics.logiscan"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+}
+```
+
+<Note>
+Change the `applicationId` if you're creating a fork or custom version of LogiScan.
+</Note>
+
+## Build & Run
+
+After completing the installation, build and run LogiScan:
+
+### Debug Build
+
+```bash
+# List available devices
+flutter devices
+
+# Run on connected device
+flutter run
+
+# Run on specific device
+flutter run -d <device-id>
+```
+
+### Release Build
+
+<CodeGroup>
+```bash Android APK
+flutter build apk --release
+
+# Output: build/app/outputs/flutter-apk/app-release.apk
+```
+
+```bash Android App Bundle
+flutter build appbundle --release
+
+# Output: build/app/outputs/bundle/release/app-release.aab
+```
+
+```bash iOS
+flutter build ios --release
+
+# Then open in Xcode to archive and distribute
+open ios/Runner.xcworkspace
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Gradle build errors" icon="android">
+    **Problem**: Build fails with Gradle errors
+
+    **Solution**:
+    ```bash
+    cd android
+    ./gradlew clean
+    cd ..
+    flutter clean
+    flutter pub get
+    flutter run
+    ```
+
+    If issues persist, check that your Java version is compatible (Java 11 required).
+  </Accordion>
+
+  <Accordion title="Firebase initialization fails" icon="fire">
+    **Problem**: `FirebaseException` or initialization errors
+
+    **Solution**:
+    1. Verify `google-services.json` exists in `android/app/`
+    2. Check that the package name in Firebase console matches `applicationId`
+    3. Ensure Firebase plugin is applied in `build.gradle.kts`
+    4. Run `flutter clean` and rebuild
+  </Accordion>
+
+  <Accordion title="Camera/Scanner not working" icon="camera">
+    **Problem**: Camera or barcode scanner fails to open
+
+    **Solution**:
+    1. Add camera permissions to `AndroidManifest.xml`:
+    ```xml
+    <uses-permission android:name="android.permission.CAMERA" />
+    ```
+    2. For iOS, add to `Info.plist`:
+    ```xml
+    <key>NSCameraUsageDescription</key>
+    <string>LogiScan needs camera access for barcode scanning</string>
+    ```
+    3. Grant camera permissions on device/emulator
+  </Accordion>
+
+  <Accordion title="HTTP connection errors" icon="network-wired">
+    **Problem**: Cannot connect to API
+
+    **Solution**:
+    1. Verify `isDevelopment` flag in `api_config.dart`
+    2. Check network connectivity
+    3. For Android emulator, use `10.0.2.2` instead of `localhost`
+    4. Ensure API endpoint is accessible
+    5. Check for SSL certificate issues
+  </Accordion>
+
+  <Accordion title="Storage permission errors" icon="mobile">
+    **Problem**: `flutter_secure_storage` or `shared_preferences` errors
+
+    **Solution**:
+    1. Ensure minimum Android API level is met
+    2. For Android 6.0+, request runtime permissions
+    3. Check that KeyStore is available (some emulators may have issues)
+  </Accordion>
+
+  <Accordion title="Version conflicts" icon="code">
+    **Problem**: Dependency version conflicts
+
+    **Solution**:
+    ```bash
+    flutter pub upgrade --major-versions
+    flutter pub get
+    ```
+
+    Review `pubspec.lock` for any conflicts and adjust version constraints in `pubspec.yaml`.
+  </Accordion>
+</AccordionGroup>
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. Check Flutter logs: `flutter logs`
+2. Review Firebase Crashlytics for runtime errors
+3. Run `flutter doctor -v` for detailed environment info
+4. Check the [Flutter documentation](https://docs.flutter.dev/)
+5. Review LogiScan's source code for implementation details
+
+<Warning>
+For production deployments, ensure you have:
+- Your own Firebase project with proper security rules
+- Production API credentials
+- Proper code signing certificates (iOS/Android)
+- Updated privacy policy and permissions
+</Warning>
+
+## Next Steps
+
+With LogiScan installed, you're ready to:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get the app running in minutes
+  </Card>
+  
+  <Card title="Architecture Overview" icon="sitemap" href="/architecture/overview">
+    Understand the app's structure
+  </Card>
+  
+  <Card title="Features" icon="sparkles" href="/features/scanning">
+    Explore scanning, tracking, and more
+  </Card>
+  
+  <Card title="API Documentation" icon="code" href="/api/auth-service">
+    Learn about backend integration
+  </Card>
+</CardGroup>

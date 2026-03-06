@@ -1,0 +1,467 @@
+---
+title: 'Measurement Models'
+description: 'Data models for package measurement and image processing'
+icon: 'ruler-combined'
+---
+
+## Overview
+
+The measurement models handle package dimension processing, OCR image uploads, and package owner identification. These models are located in `lib/features/scan/models/measurement_models.dart`.
+
+---
+
+## RequestEncodeFile
+
+Represents a base64-encoded file for API transmission.
+
+### Fields
+
+<ParamField path="encodeContent" type="String" required>
+  Base64-encoded content of the file
+</ParamField>
+
+<ParamField path="fileExtension" type="String" required>
+  File extension (e.g., "jpg", "png", "pdf")
+</ParamField>
+
+<ParamField path="fileName" type="String" required>
+  Name of the file
+</ParamField>
+
+### Constructor
+
+```dart
+const RequestEncodeFile({
+  required this.encodeContent,
+  required this.fileExtension,
+  required this.fileName,
+});
+```
+
+### Methods
+
+#### toJson()
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Example:**
+
+```dart
+final file = RequestEncodeFile(
+  encodeContent: base64.encode(imageBytes),
+  fileExtension: 'jpg',
+  fileName: 'package_scan.jpg',
+);
+
+final json = file.toJson();
+```
+
+---
+
+## ProcessMeasurementDataRequest
+
+Request for processing measurement data from an OCR image.
+
+### Fields
+
+<ParamField path="file" type="RequestEncodeFile" required>
+  The encoded image file containing measurement data to process
+</ParamField>
+
+### Constructor
+
+```dart
+const ProcessMeasurementDataRequest({required this.file});
+```
+
+### Methods
+
+#### toJson()
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+---
+
+## ProcessMeasurementDataResponse
+
+Response containing extracted package dimensions from OCR processing.
+
+### Fields
+
+<ResponseField name="weight" type="double?">
+  Package weight in kilograms
+</ResponseField>
+
+<ResponseField name="width" type="double?">
+  Package width in centimeters
+</ResponseField>
+
+<ResponseField name="length" type="double?">
+  Package length in centimeters
+</ResponseField>
+
+<ResponseField name="height" type="double?">
+  Package height in centimeters
+</ResponseField>
+
+### Constructors
+
+#### Default Constructor
+
+```dart
+const ProcessMeasurementDataResponse({
+  this.weight,
+  this.width,
+  this.length,
+  this.height,
+});
+```
+
+#### empty()
+
+```dart
+factory ProcessMeasurementDataResponse.empty()
+```
+
+#### fromJson()
+
+Accepts either the outer generic wrapper or the raw content map.
+
+```dart
+factory ProcessMeasurementDataResponse.fromJson(Map<String, dynamic> json)
+```
+
+<Note>
+  The `fromJson` method includes a helper function `asDouble()` that safely converts numeric values, strings, or null to `double?`.
+</Note>
+
+**Example:**
+
+```dart
+final response = ProcessMeasurementDataResponse.fromJson({
+  'content': {
+    'weight': 2.5,
+    'width': 30.0,
+    'length': 40.0,
+    'height': 20.0
+  }
+});
+
+print('Dimensions: ${response.length} x ${response.width} x ${response.height} cm');
+print('Weight: ${response.weight} kg');
+```
+
+---
+
+## UploadPackageImageWithoutIdImageRequest
+
+Represents a single package image for upload without a package ID.
+
+### Fields
+
+<ParamField path="identifier" type="String?">
+  Optional identifier for the image
+</ParamField>
+
+<ParamField path="encodeContent" type="String?">
+  Base64-encoded image content
+</ParamField>
+
+<ParamField path="fileExtension" type="String?">
+  File extension (e.g., "jpg", "png")
+</ParamField>
+
+<ParamField path="fileName" type="String?">
+  Name of the file
+</ParamField>
+
+<ParamField path="userRegistrationDate" type="DateTime" required>
+  Date and time when the user registered this image
+</ParamField>
+
+### Constructor
+
+```dart
+const UploadPackageImageWithoutIdImageRequest({
+  this.identifier,
+  this.encodeContent,
+  this.fileExtension,
+  this.fileName,
+  required this.userRegistrationDate,
+});
+```
+
+### Methods
+
+#### toJson()
+
+Converts to JSON with ISO 8601 formatted date.
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Example:**
+
+```dart
+final imageRequest = UploadPackageImageWithoutIdImageRequest(
+  identifier: 'front_view',
+  encodeContent: base64ImageString,
+  fileExtension: 'jpg',
+  fileName: 'package_front.jpg',
+  userRegistrationDate: DateTime.now(),
+);
+
+final json = imageRequest.toJson();
+// 'userRegistrationDate' will be formatted as: "2026-03-06T10:30:00.000Z"
+```
+
+---
+
+## UploadPackageImageWithoutIdRequest
+
+Request for uploading multiple package images without a package ID.
+
+### Fields
+
+<ParamField path="images" type="List<UploadPackageImageWithoutIdImageRequest>" required>
+  List of images to upload
+</ParamField>
+
+### Constructor
+
+```dart
+const UploadPackageImageWithoutIdRequest({required this.images});
+```
+
+### Methods
+
+#### toJson()
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+---
+
+## GetPackageOwnerByImageRequest
+
+Request for identifying package owner from an image.
+
+### Fields
+
+<ParamField path="file" type="RequestEncodeFile" required>
+  The encoded image file to analyze
+</ParamField>
+
+### Constructor
+
+```dart
+const GetPackageOwnerByImageRequest({required this.file});
+```
+
+### Methods
+
+#### toJson()
+
+<Warning>
+  This endpoint expects the field named "image" instead of "file" in the JSON payload.
+</Warning>
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Example:**
+
+```dart
+final request = GetPackageOwnerByImageRequest(
+  file: RequestEncodeFile(
+    encodeContent: base64Image,
+    fileExtension: 'jpg',
+    fileName: 'label.jpg',
+  ),
+);
+
+final json = request.toJson();
+// Result: {'image': {...}} not {'file': {...}}
+```
+
+---
+
+## OwnerType
+
+Enumeration of possible package owners.
+
+### Values
+
+<ResponseField name="globalShipping" type="OwnerType">
+  Package belongs to Global Shipping
+</ResponseField>
+
+<ResponseField name="gbi" type="OwnerType">
+  Package belongs to GBI
+</ResponseField>
+
+<ResponseField name="unknown" type="OwnerType">
+  Package owner could not be determined
+</ResponseField>
+
+---
+
+## GetPackageOwnerByImageResponse
+
+Response containing the identified package owner.
+
+### Fields
+
+<ResponseField name="ownerPackage" type="OwnerType" required>
+  The identified owner of the package
+</ResponseField>
+
+<ResponseField name="color" type="String?">
+  Optional color code associated with the owner
+</ResponseField>
+
+### Constructors
+
+#### Default Constructor
+
+```dart
+const GetPackageOwnerByImageResponse({
+  required this.ownerPackage,
+  required this.color,
+});
+```
+
+#### empty()
+
+Returns a response with `unknown` owner type.
+
+```dart
+factory GetPackageOwnerByImageResponse.empty()
+```
+
+#### fromJson()
+
+Parses the response and normalizes owner type strings.
+
+```dart
+factory GetPackageOwnerByImageResponse.fromJson(Map<String, dynamic> json)
+```
+
+<Note>
+  The `fromJson` method handles variations in the owner string, including the backend typo "GlovalShipping" and normalizes it to `OwnerType.globalShipping`.
+</Note>
+
+**Example:**
+
+```dart
+final response = GetPackageOwnerByImageResponse.fromJson({
+  'content': {
+    'ownerPackage': 'GlovalShipping',  // Handles backend typo
+    'color': '#FF5733'
+  }
+});
+
+if (response.ownerPackage == OwnerType.globalShipping) {
+  print('Package belongs to Global Shipping');
+  print('Color code: ${response.color}');
+}
+```
+
+---
+
+## Usage Examples
+
+<CodeGroup>
+
+```dart OCR Measurement Processing
+import 'dart:convert';
+import 'package:logiscan/features/scan/models/measurement_models.dart';
+
+Future<ProcessMeasurementDataResponse> processMeasurementImage(
+  List<int> imageBytes,
+) async {
+  // Encode image
+  final encodedFile = RequestEncodeFile(
+    encodeContent: base64.encode(imageBytes),
+    fileExtension: 'jpg',
+    fileName: 'measurement.jpg',
+  );
+
+  // Create request
+  final request = ProcessMeasurementDataRequest(file: encodedFile);
+
+  // Send to API
+  final response = await httpService.post(
+    '/scan/process-measurement',
+    data: request.toJson(),
+  );
+
+  // Parse response
+  return ProcessMeasurementDataResponse.fromJson(response.content);
+}
+```
+
+```dart Identify Package Owner
+Future<OwnerType> identifyPackageOwner(List<int> labelImageBytes) async {
+  final file = RequestEncodeFile(
+    encodeContent: base64.encode(labelImageBytes),
+    fileExtension: 'jpg',
+    fileName: 'label.jpg',
+  );
+
+  final request = GetPackageOwnerByImageRequest(file: file);
+
+  final response = await httpService.post(
+    '/scan/identify-owner',
+    data: request.toJson(),
+  );
+
+  final ownerResponse = GetPackageOwnerByImageResponse.fromJson(
+    response.content,
+  );
+
+  return ownerResponse.ownerPackage;
+}
+```
+
+```dart Upload Multiple Images
+Future<void> uploadPackageImages(List<List<int>> imageBytesList) async {
+  final images = imageBytesList.map((bytes) {
+    return UploadPackageImageWithoutIdImageRequest(
+      encodeContent: base64.encode(bytes),
+      fileExtension: 'jpg',
+      fileName: 'package_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      userRegistrationDate: DateTime.now(),
+    );
+  }).toList();
+
+  final request = UploadPackageImageWithoutIdRequest(images: images);
+
+  await httpService.post(
+    '/scan/upload-images',
+    data: request.toJson(),
+  );
+}
+```
+
+</CodeGroup>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Tracking Models" icon="map-pin" href="/api/tracking-models">
+    Models for tracking package information
+  </Card>
+  <Card title="API Response" icon="reply" href="/api/api-response">
+    Generic API response wrapper
+  </Card>
+</CardGroup>

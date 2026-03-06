@@ -1,0 +1,578 @@
+---
+title: 'API Response'
+description: 'Generic response wrapper and error handling models'
+icon: 'reply'
+---
+
+## Overview
+
+The API response models provide a consistent structure for handling successful and error responses across the application. These core models are located in `lib/core/models/` and are used by all API services.
+
+---
+
+## ApiResponse\<T\>
+
+Generic wrapper for all API responses in the application.
+
+### Type Parameters
+
+<ParamField path="T" type="Type">
+  The type of the content being returned (e.g., `LoginResponse`, `ProcessMeasurementDataResponse`)
+</ParamField>
+
+### Fields
+
+<ResponseField name="isSuccessful" type="bool" required>
+  Indicates whether the API request was successful
+</ResponseField>
+
+<ResponseField name="message" type="String?">
+  Success message from the API
+</ResponseField>
+
+<ResponseField name="messageDetail" type="String?">
+  Detailed error message when the request fails
+</ResponseField>
+
+<ResponseField name="content" type="T?">
+  The typed content/payload of the response
+</ResponseField>
+
+### Constructors
+
+#### Default Constructor
+
+```dart
+const ApiResponse({
+  required this.isSuccessful,
+  this.message,
+  this.messageDetail,
+  this.content,
+});
+```
+
+#### error()
+
+Creates an error response.
+
+```dart
+factory ApiResponse<T>.error({
+  String? messageDetail,
+  T? content,
+})
+```
+
+**Parameters:**
+- `messageDetail`: Error message to display
+- `content`: Optional error content/details
+
+**Example:**
+
+```dart
+return ApiResponse<LoginResponse>.error(
+  messageDetail: 'Invalid credentials',
+);
+```
+
+#### success()
+
+Creates a successful response.
+
+```dart
+factory ApiResponse<T>.success({
+  String? message,
+  T? content,
+})
+```
+
+**Parameters:**
+- `message`: Success message to display
+- `content`: The response content/data
+
+**Example:**
+
+```dart
+return ApiResponse<LoginResponse>.success(
+  message: 'Login successful',
+  content: loginResponse,
+);
+```
+
+### Properties
+
+#### displayMessage
+
+Convenience getter that returns the appropriate message based on success status.
+
+```dart
+String? get displayMessage
+```
+
+**Returns:** `message` if successful, `messageDetail` if failed.
+
+**Example:**
+
+```dart
+final response = await login(username, password);
+
+if (response.displayMessage != null) {
+  showSnackbar(response.displayMessage!);
+}
+```
+
+---
+
+## ApiErrorCode
+
+Static constants for standardized API error codes.
+
+### Authentication Errors (1-99)
+
+<ResponseField name="sessionExpired" type="int" default="1">
+  User session has expired
+</ResponseField>
+
+<ResponseField name="invalidToken" type="int" default="2">
+  Authentication token is invalid
+</ResponseField>
+
+<ResponseField name="invalidCredentials" type="int" default="3">
+  Login credentials are incorrect
+</ResponseField>
+
+### State Errors (60-69)
+
+<ResponseField name="invalidStateForOperation" type="int" default="60">
+  Operation cannot be performed in current state
+</ResponseField>
+
+### Validation Errors (100-199)
+
+<ResponseField name="invalidInput" type="int" default="100">
+  Input data is invalid
+</ResponseField>
+
+<ResponseField name="invalidState" type="int" default="101">
+  Entity state is invalid
+</ResponseField>
+
+<ResponseField name="duplicateEntry" type="int" default="102">
+  Duplicate entry detected
+</ResponseField>
+
+### Business Errors (200-299)
+
+<ResponseField name="guideNotFound" type="int" default="200">
+  Guide not found in system
+</ResponseField>
+
+<ResponseField name="invalidGuideState" type="int" default="201">
+  Guide is in invalid state
+</ResponseField>
+
+<ResponseField name="cubeNotFound" type="int" default="202">
+  Cube not found in system
+</ResponseField>
+
+<ResponseField name="invalidCubeState" type="int" default="203">
+  Cube is in invalid state
+</ResponseField>
+
+<ResponseField name="invalidOperation" type="int" default="204">
+  Invalid operation requested
+</ResponseField>
+
+### Network Errors (400-499)
+
+<ResponseField name="networkError" type="int" default="400">
+  Network connectivity error
+</ResponseField>
+
+<ResponseField name="timeout" type="int" default="408">
+  Request timeout
+</ResponseField>
+
+<ResponseField name="unknown" type="int" default="499">
+  Unknown error
+</ResponseField>
+
+### Server Errors (500+)
+
+<ResponseField name="serverError" type="int" default="500">
+  Internal server error
+</ResponseField>
+
+<ResponseField name="serviceUnavailable" type="int" default="503">
+  Service is unavailable
+</ResponseField>
+
+---
+
+## ApiError
+
+Immutable error model that implements `Exception`.
+
+### Fields
+
+<ResponseField name="code" type="int" required>
+  Error code from `ApiErrorCode`
+</ResponseField>
+
+<ResponseField name="message" type="String" required>
+  Human-readable error message
+</ResponseField>
+
+<ResponseField name="details" type="Map<String, dynamic>?">
+  Additional error details or context
+</ResponseField>
+
+### Constructors
+
+#### Default Constructor
+
+```dart
+const ApiError({
+  required this.code,
+  required this.message,
+  this.details,
+});
+```
+
+#### fromJson()
+
+Parses an ApiError from JSON.
+
+```dart
+factory ApiError.fromJson(Map<String, dynamic> json)
+```
+
+**Example:**
+
+```dart
+try {
+  final response = await httpService.post('/endpoint', data: data);
+} catch (e) {
+  if (e is Map<String, dynamic>) {
+    final error = ApiError.fromJson(e);
+    print('Error ${error.code}: ${error.message}');
+  }
+}
+```
+
+#### serverError()
+
+Creates a server error instance.
+
+```dart
+factory ApiError.serverError([String? message])
+```
+
+#### networkError()
+
+Creates a network error instance.
+
+```dart
+factory ApiError.networkError([String? message])
+```
+
+#### sessionExpired()
+
+Creates a session expired error instance.
+
+```dart
+factory ApiError.sessionExpired([String? message])
+```
+
+**Example:**
+
+```dart
+if (response.statusCode == 401) {
+  throw ApiError.sessionExpired('Your session has expired. Please login again.');
+}
+```
+
+### Properties
+
+#### isAuthError
+
+Checks if the error is authentication-related (codes 1-9).
+
+```dart
+bool get isAuthError
+```
+
+#### isValidationError
+
+Checks if the error is validation-related (codes 100-199).
+
+```dart
+bool get isValidationError
+```
+
+#### isBusinessError
+
+Checks if the error is business logic-related (codes 200-499).
+
+```dart
+bool get isBusinessError
+```
+
+#### isServerError
+
+Checks if the error is server-related (codes 500+).
+
+```dart
+bool get isServerError
+```
+
+#### userMessage
+
+Gets the message suitable for displaying to users.
+
+```dart
+String get userMessage
+```
+
+#### isRetryable
+
+Indicates whether the operation should be retried.
+
+```dart
+bool get isRetryable
+```
+
+<Info>
+  Returns `true` for server errors and service unavailable errors.
+</Info>
+
+#### requiresLogout
+
+Indicates whether the user should be logged out.
+
+```dart
+bool get requiresLogout
+```
+
+<Warning>
+  Returns `true` for session expired and invalid token errors.
+</Warning>
+
+### Methods
+
+#### toString()
+
+Returns a formatted string representation of the error.
+
+```dart
+@override
+String toString()
+```
+
+**Format:** `ApiError(code): message - details`
+
+---
+
+## Usage Examples
+
+<CodeGroup>
+
+```dart Basic Response Handling
+import 'package:logiscan/core/models/api_response.dart';
+
+Future<void> handleApiCall() async {
+  final ApiResponse<LoginResponse> response = await authService.login(
+    username: 'user@example.com',
+    password: 'password',
+  );
+  
+  if (response.isSuccessful) {
+    // Success case
+    print(response.message); // "Login successful"
+    final loginData = response.content;
+    
+    if (loginData != null) {
+      print('Token: ${loginData.token}');
+      print('User: ${loginData.personFirstName}');
+    }
+  } else {
+    // Error case
+    print(response.messageDetail); // "Invalid credentials"
+    showErrorDialog(response.displayMessage ?? 'An error occurred');
+  }
+}
+```
+
+```dart Error Handling with ApiError
+import 'package:logiscan/core/models/api_error.dart';
+
+Future<void> performOperation() async {
+  try {
+    final response = await httpService.post('/api/operation', data: data);
+    
+    // Process successful response
+    print('Operation completed');
+  } on ApiError catch (error) {
+    // Handle specific error types
+    if (error.requiresLogout) {
+      // Session expired or invalid token
+      await authService.logout();
+      navigateToLogin();
+    } else if (error.isRetryable) {
+      // Server error - retry the operation
+      await Future.delayed(Duration(seconds: 2));
+      return performOperation(); // Retry
+    } else if (error.isValidationError) {
+      // Show validation error to user
+      showSnackbar(error.userMessage);
+    } else {
+      // General error handling
+      print('Error ${error.code}: ${error.message}');
+      if (error.details != null) {
+        print('Details: ${error.details}');
+      }
+    }
+  } catch (e) {
+    // Unexpected error
+    print('Unexpected error: $e');
+  }
+}
+```
+
+```dart Creating Custom Responses
+Future<ApiResponse<ProcessMeasurementDataResponse>> processMeasurement(
+  List<int> imageBytes,
+) async {
+  try {
+    // Perform measurement processing
+    final result = await measurementService.process(imageBytes);
+    
+    if (result.weight != null) {
+      return ApiResponse.success(
+        message: 'Measurement processed successfully',
+        content: result,
+      );
+    } else {
+      return ApiResponse.error(
+        messageDetail: 'Could not extract measurements from image',
+      );
+    }
+  } catch (e) {
+    return ApiResponse.error(
+      messageDetail: 'Failed to process measurement: $e',
+    );
+  }
+}
+```
+
+```dart Error Code Categorization
+void handleErrorByCategory(ApiError error) {
+  if (error.code == ApiErrorCode.sessionExpired) {
+    print('Session expired');
+  } else if (error.code == ApiErrorCode.duplicateEntry) {
+    print('Duplicate tracking number');
+  } else if (error.code >= 500) {
+    print('Server error - please try again later');
+  }
+  
+  // Or use helper properties
+  switch (true) {
+    case error.isAuthError:
+      handleAuthError(error);
+      break;
+    case error.isValidationError:
+      handleValidationError(error);
+      break;
+    case error.isBusinessError:
+      handleBusinessError(error);
+      break;
+    case error.isServerError:
+      handleServerError(error);
+      break;
+  }
+}
+```
+
+```dart Working with Generic Responses
+// Different types can be used with ApiResponse
+ApiResponse<LoginResponse> loginResponse;
+ApiResponse<ProcessMeasurementDataResponse> measurementResponse;
+ApiResponse<GetPackageTrackingDetailsResponse> trackingResponse;
+ApiResponse<List<String>> stringListResponse;
+
+// Type-safe access to content
+if (loginResponse.isSuccessful && loginResponse.content != null) {
+  final token = loginResponse.content!.token; // Type: String?
+}
+
+if (measurementResponse.isSuccessful && measurementResponse.content != null) {
+  final weight = measurementResponse.content!.weight; // Type: double?
+}
+```
+
+</CodeGroup>
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Check isSuccessful">
+    Always check the `isSuccessful` flag before accessing `content` to avoid null reference errors.
+    
+    ```dart
+    if (response.isSuccessful && response.content != null) {
+      // Safe to use response.content
+      processData(response.content!);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use displayMessage for User Feedback">
+    The `displayMessage` property automatically returns the appropriate message for UI display.
+    
+    ```dart
+    final message = response.displayMessage;
+    if (message != null) {
+      showSnackbar(message);
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Session Expiry Globally">
+    Check `requiresLogout` property to implement global session expiry handling.
+    
+    ```dart
+    if (error.requiresLogout) {
+      await authService.logout();
+      navigateToLoginScreen();
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Implement Retry Logic for Retryable Errors">
+    Use the `isRetryable` property to automatically retry failed operations.
+    
+    ```dart
+    if (error.isRetryable) {
+      await Future.delayed(Duration(seconds: 2));
+      return retryOperation();
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Related
+
+<CardGroup cols={3}>
+  <Card title="Authentication Models" icon="key" href="/api/auth-models">
+    User authentication request/response models
+  </Card>
+  <Card title="Measurement Models" icon="ruler-combined" href="/api/measurement-models">
+    Package measurement data models
+  </Card>
+  <Card title="Tracking Models" icon="map-pin" href="/api/tracking-models">
+    Package tracking and registration models
+  </Card>
+</CardGroup>

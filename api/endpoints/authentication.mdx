@@ -1,0 +1,265 @@
+---
+title: Authentication Endpoints
+description: API endpoints for user authentication and token management
+---
+
+## Overview
+
+The authentication endpoints handle user login, token refresh, and session management. All endpoints in this group are accessible without a JWT token, except for the refresh token endpoint which requires a valid token.
+
+**Base URL**: `https://beehive.gbilogistics.net/api/mobile/v1.0`
+
+## Endpoints
+
+### POST /Auth/login
+
+Authenticate a user and receive a JWT token.
+
+**Endpoint**: `/api/mobile/v1.0/Auth/login`
+
+**Authentication**: None required
+
+**Request Body**:
+
+<ParamField path="username" type="string" required>
+  The user's login username
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  The user's password
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "username": "user@example.com",
+  "password": "your-password"
+}
+```
+
+**Response**:
+
+<ResponseField name="code" type="int">
+  Status code (1 = success, >1 = error)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Status message
+</ResponseField>
+
+<ResponseField name="messageDetail" type="string">
+  Detailed message or error description
+</ResponseField>
+
+<ResponseField name="content" type="object">
+  Login response data
+  
+  <Expandable title="content properties">
+    <ResponseField name="token" type="string">
+      JWT authentication token
+    </ResponseField>
+    
+    <ResponseField name="personFirstName" type="string">
+      User's first name
+    </ResponseField>
+    
+    <ResponseField name="personLastName" type="string">
+      User's last name
+    </ResponseField>
+    
+    <ResponseField name="entityName" type="string">
+      Company or entity name
+    </ResponseField>
+    
+    <ResponseField name="imageUrl" type="string">
+      User's profile image URL
+    </ResponseField>
+    
+    <ResponseField name="maxImagesPerPackage" type="int">
+      Maximum number of images allowed per package
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": "Login successful",
+  "content": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "personFirstName": "John",
+    "personLastName": "Doe",
+    "entityName": "GBI Logistics",
+    "imageUrl": "https://example.com/profile.jpg",
+    "maxImagesPerPackage": 10
+  }
+}
+```
+
+**Error Codes**:
+
+<AccordionGroup>
+  <Accordion title="Code 2 - Invalid Credentials">
+    The username or password is incorrect.
+    
+    ```json
+    {
+      "code": 2,
+      "message": "Error",
+      "messageDetail": "Invalid username or password",
+      "content": null
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Code 3 - Account Disabled">
+    The user account has been disabled.
+    
+    ```json
+    {
+      "code": 3,
+      "message": "Error",
+      "messageDetail": "Account is disabled",
+      "content": null
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Usage Example**:
+
+```dart auth_service.dart:39-67
+Future<ApiResponse<LoginResponse>> login(LoginRequest request) async {
+  try {
+    final response = await _http.post<LoginResponse>(
+      ApiEndpoints.login,
+      request.toJson(),
+      (json) => LoginResponse.fromJson(json),
+    );
+
+    if (response.isSuccessful && response.content?.token != null) {
+      final token = response.content!.token!;
+      final loginData = response.content!;
+      _http.setToken(token);
+      await _storage.setToken(token);
+      await _storage.setLoginData(loginData.toJson());
+    } else if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: LoginResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: LoginResponse.empty(),
+    );
+  }
+}
+```
+
+---
+
+### POST /Auth/refresh-token
+
+Refresh an expired or expiring JWT token.
+
+**Endpoint**: `/api/mobile/v1.0/Auth/refresh-token`
+
+**Authentication**: Required (existing token)
+
+**Request Body**:
+
+<ParamField path="token" type="string" required>
+  The current JWT token to refresh
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response**: Same structure as login response
+
+**Usage Example**:
+
+```dart auth_service.dart:115-122
+// Attempt to refresh using the refresh-token endpoint
+final response = await _http.post<LoginResponse>(
+  ApiEndpoints.refreshToken,
+  {
+    'token': tokenData.token,
+  },
+  (json) => LoginResponse.fromJson(json),
+  suppressAuthHandling: true,
+);
+```
+
+<Note>
+  LogiScan implements a dual refresh strategy:
+  1. First attempts to re-login using stored credentials
+  2. Falls back to the refresh-token endpoint if credentials are not available
+</Note>
+
+---
+
+## Authentication Flow
+
+The typical authentication flow in LogiScan:
+
+<Steps>
+  <Step title="Login">
+    User enters username and password, app calls `/Auth/login`
+  </Step>
+  
+  <Step title="Token Storage">
+    JWT token is stored in SharedPreferences with expiration time
+  </Step>
+  
+  <Step title="Session Restoration">
+    On app startup, stored token is loaded and validated
+  </Step>
+  
+  <Step title="Automatic Refresh">
+    Token is automatically refreshed 30 minutes before expiration
+  </Step>
+  
+  <Step title="Session Expiry">
+    If token expires or refresh fails, user is redirected to login
+  </Step>
+</Steps>
+
+## Security Considerations
+
+<Card title="Token Security" icon="shield-halved">
+  - Tokens are stored securely in SharedPreferences
+  - Credentials can optionally be stored in FlutterSecureStorage (platform secure enclave)
+  - All API requests include the token in the `Authorization` header as `Bearer <token>`
+  - The HttpService automatically handles 401 responses and attempts token refresh
+</Card>
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="AuthService" icon="key" href="/api/auth-service">
+    Authentication service implementation
+  </Card>
+  <Card title="Auth Models" icon="database" href="/api/auth-models">
+    LoginRequest and LoginResponse models
+  </Card>
+  <Card title="HttpService" icon="globe" href="/api/http-service">
+    HTTP client with automatic token management
+  </Card>
+  <Card title="Authentication Feature" icon="fingerprint" href="/features/authentication">
+    User authentication feature guide
+  </Card>
+</CardGroup>

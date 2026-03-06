@@ -1,0 +1,630 @@
+---
+title: Project Structure
+description: Understanding the LogiScan codebase organization and architecture
+---
+
+## Overview
+
+LogiScan follows a feature-first architecture pattern, organizing code by features rather than by technical layers. This approach makes it easier to understand and maintain the codebase as it grows.
+
+## Directory Structure
+
+```
+logiscan/
+├── android/                 # Android native code
+│   ├── app/
+│   │   ├── build.gradle.kts
+│   │   └── google-services.json
+│   └── ...
+├── assets/                  # Static assets
+│   └── images/
+│       ├── logo.png
+│       └── logo_with_text.png
+├── lib/                     # Main application code
+│   ├── core/               # Core utilities and services
+│   │   ├── config/         # Configuration files
+│   │   ├── models/         # Core models
+│   │   ├── presentation/   # Shared UI components
+│   │   ├── services/       # Core services
+│   │   └── theme/          # Theme configuration
+│   ├── features/           # Feature modules
+│   │   ├── auth/           # Authentication feature
+│   │   └── scan/           # Scanning feature
+│   ├── firebase_options.dart
+│   └── main.dart           # Application entry point
+├── test/                    # Test files
+├── analysis_options.yaml    # Linter configuration
+├── pubspec.yaml            # Dependencies and metadata
+└── README.md
+```
+
+## Core Directory
+
+The `lib/core/` directory contains shared functionality used across all features.
+
+### Configuration (`core/config/`)
+
+Contains application-wide configuration:
+
+```dart lib/core/config/api_config.dart
+class ApiConfig {
+  /// URL base de la API de desarrollo
+  static const String devBaseUrl = 'http://100.104.120.121:82';
+  
+  /// URL base de la API de producción
+  static const String prodBaseUrl = 'https://beehive.gbilogistics.net';
+  
+  /// Modo de desarrollo (cambiar a false para producción)
+  static const bool isDevelopment = false;
+  
+  /// URL base de la API (selecciona según el modo)
+  static String get baseUrl => isDevelopment ? devBaseUrl : prodBaseUrl;
+  
+  /// Base path para todos los endpoints de la API (mobile)
+  static String get apiPath => '/api/mobile/v$version';
+}
+
+class ApiEndpoints {
+  static String get login => ApiConfig.buildUrl('/Auth/login');
+  static String get refreshToken => ApiConfig.buildUrl('/Auth/refresh-token');
+  static String get processMeasurement =>
+      ApiConfig.buildUrl('/ProcessPackage/process-measurement-data');
+  // ... more endpoints
+}
+```
+
+**Key files:**
+- `api_config.dart` - API URLs and endpoint definitions
+
+### Models (`core/models/`)
+
+Core data models used throughout the application:
+
+#### ApiError Model
+
+```dart lib/core/models/api_error.dart
+@immutable
+class ApiError implements Exception {
+  final int code;
+  final String message;
+  final Map<String, dynamic>? details;
+
+  const ApiError({
+    required this.code,
+    required this.message,
+    this.details,
+  });
+
+  bool get isAuthError => code >= 1 && code < 10;
+  bool get isValidationError => code >= 100 && code < 200;
+  bool get isBusinessError => code >= 200 && code < 500;
+  bool get isServerError => code >= 500;
+  bool get requiresLogout =>
+      code == ApiErrorCode.sessionExpired || code == ApiErrorCode.invalidToken;
+}
+```
+
+#### ApiResponse Model
+
+```dart lib/core/models/api_response.dart
+class ApiResponse<T> {
+  final bool isSuccessful;
+  final String? message;
+  final String? messageDetail;
+  final T? content;
+
+  const ApiResponse({
+    required this.isSuccessful,
+    this.message,
+    this.messageDetail,
+    this.content,
+  });
+
+  factory ApiResponse.error({String? messageDetail, T? content}) {
+    return ApiResponse(
+      isSuccessful: false,
+      messageDetail: messageDetail,
+      content: content,
+    );
+  }
+
+  factory ApiResponse.success({String? message, T? content}) {
+    return ApiResponse(
+      isSuccessful: true,
+      message: message,
+      content: content,
+    );
+  }
+}
+```
+
+**Key files:**
+- `api_error.dart` - Error codes and error model
+- `api_response.dart` - Generic API response wrapper
+
+### Services (`core/services/`)
+
+Core services that handle cross-cutting concerns:
+
+#### HttpService
+
+Handles all HTTP communication with the backend API:
+
+```dart lib/core/services/http_service.dart
+class HttpService {
+  final String baseUrl;
+  String? _token;
+  Function()? onSessionExpired;
+  Future<bool> Function()? onTokenRefreshNeeded;
+
+  HttpService({
+    required this.baseUrl,
+    this.onSessionExpired,
+    this.onTokenRefreshNeeded,
+  });
+
+  void setToken(String? token) {
+    if (token == null || token.trim().isEmpty) {
+      _token = null;
+      return;
+    }
+    _token = token.startsWith('Bearer ') ? token : 'Bearer $token';
+  }
+
+  Map<String, String> get _headers => {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    if (_token != null) 'Authorization': _token!,
+    ...VersionService.instance.versionHeaders,
+  };
+
+  Future<ApiResponse<T>> get<T>(
+    String path,
+    T Function(Map<String, dynamic> json) fromJson, {
+    Map<String, dynamic>? queryParams,
+    bool suppressAuthHandling = false,
+  }) async {
+    // Implementation...
+  }
+
+  Future<ApiResponse<T>> post<T>(...) async {
+    // Implementation...
+  }
+}
+```
+
+#### AppLogger
+
+Centralized logging utility:
+
+```dart lib/core/services/app_logger.dart
+class AppLogger {
+  static void log(
+    String message, {
+    String? source,
+    Object? error,
+    StackTrace? stackTrace,
+    String type = 'INFO',
+  }) {
+    final logMessage = '''\n[$type] ${source != null ? '[$source]' : ''}: $message
+${error != null ? '\nError: $error' : ''}
+${stackTrace != null ? '\nStack: \n$stackTrace' : ''}''';
+    debugPrint(logMessage);
+  }
+
+  static void error(String message, {Object? error, StackTrace? stackTrace, String? source}) {
+    log(message, error: error, stackTrace: stackTrace, source: source, type: 'ERROR');
+  }
+}
+```
+
+**Key services:**
+- `http_service.dart` - HTTP client with token management and auto-refresh
+- `app_logger.dart` - Logging utility
+- `storage_service.dart` - SharedPreferences wrapper
+- `secure_credentials_service.dart` - Secure storage for credentials
+- `version_service.dart` - App version management
+- `app_update_service.dart` - App update checking
+
+### Presentation (`core/presentation/`)
+
+Shared UI components and utilities:
+
+```dart lib/core/presentation/message_helper.dart
+class MessageHelper {
+  static void showIconSnackBar(
+    BuildContext context, {
+    required String? message,
+    bool isSuccess = true,
+    bool isWarning = false,
+  }) {
+    if (message == null || message.isEmpty) return;
+    
+    final Color color;
+    final IconData icon;
+    if (isWarning) {
+      color = Colors.orange;
+      icon = Icons.warning_amber_rounded;
+    } else if (isSuccess) {
+      color = Colors.green;
+      icon = Icons.check_circle_outline;
+    } else {
+      color = Colors.red;
+      icon = Icons.error_outline;
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: color,
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Key files:**
+- `message_helper.dart` - SnackBar utilities
+- `widgets/loading_indicator.dart` - Shared loading widget
+
+### Theme (`core/theme/`)
+
+Application theme configuration:
+
+```dart lib/core/theme/app_theme.dart
+class AppTheme {
+  static const Color primary = Color(0xFF111827);
+  static const Color accentBlue = Color(0xFF111827);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceAlt = Color(0xFFF3F4F6);
+
+  static ThemeData get lightTheme {
+    final base = ThemeData(
+      fontFamily: 'Roboto',
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accentBlue,
+        brightness: Brightness.light,
+      ).copyWith(
+        primary: primary,
+        secondary: primary,
+      ),
+      scaffoldBackgroundColor: surfaceAlt,
+    );
+    return base;
+  }
+}
+```
+
+## Features Directory
+
+The `lib/features/` directory contains feature modules. Each feature follows a consistent structure:
+
+```
+features/
+├── feature_name/
+│   ├── models/              # Feature-specific models
+│   ├── providers/           # State management (Provider)
+│   ├── services/            # Feature-specific services
+│   └── presentation/
+│       ├── pages/           # Full-screen pages
+│       └── widgets/         # Reusable widgets
+```
+
+### Authentication Feature
+
+Location: `lib/features/auth/`
+
+**Structure:**
+```
+auth/
+├── models/
+│   └── auth_models.dart         # LoginRequest, LoginResponse, etc.
+├── providers/
+│   └── auth_provider.dart       # Authentication state
+├── services/
+│   └── auth_service.dart        # Auth API calls
+└── presentation/
+    ├── pages/
+    │   ├── auth_page.dart       # Login screen
+    │   ├── home_page.dart       # Home screen
+    │   ├── scan_page.dart       # Scan screen
+    │   └── ...
+    └── widgets/
+        └── shared_bottom_nav.dart
+```
+
+**AuthProvider Example:**
+
+```dart lib/features/auth/providers/auth_provider.dart
+class AuthProvider extends ChangeNotifier {
+  final AuthService _authService;
+  bool _isLoading = false;
+  String? _error;
+  LoginResponse? _loginData;
+  bool _isAuthenticated = false;
+
+  AuthProvider(this._authService) {
+    _restoreSession();
+  }
+
+  Future<bool> login(String username, String password) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      final request = LoginRequest(username: username, password: password);
+      final response = await _authService.login(request);
+
+      if (response.isSuccessful && response.content != null) {
+        _loginData = response.content;
+        _isAuthenticated = true;
+        return true;
+      } else {
+        _error = response.messageDetail ?? response.message;
+        return false;
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}
+```
+
+### Scan Feature
+
+Location: `lib/features/scan/`
+
+**Structure:**
+```
+scan/
+├── models/
+│   ├── measurement_models.dart
+│   ├── package_images_models.dart
+│   ├── register_models.dart
+│   └── verify_tracking_models.dart
+└── services/
+    └── measurement_service.dart
+```
+
+Handles barcode scanning, package measurement, and image processing.
+
+## Application Entry Point
+
+The `lib/main.dart` file initializes the app:
+
+```dart lib/main.dart
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Configure Crashlytics
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
+  
+  await VersionService.instance.initialize();
+  runApp(const LogiScanApp());
+}
+
+class LogiScanApp extends StatefulWidget {
+  const LogiScanApp({super.key});
+
+  @override
+  State<LogiScanApp> createState() => _LogiScanAppState();
+}
+
+class _LogiScanAppState extends State<LogiScanApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Initialize services
+    _storageService = StorageService();
+    _secureCredentialsService = SecureCredentialsService();
+    _httpService = HttpService(baseUrl: ApiConfig.baseUrl);
+    _authService = AuthService(_httpService, _storageService, _secureCredentialsService);
+    _measurementService = MeasurementService(_httpService);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) => AuthProvider(_authService),
+        ),
+        Provider<MeasurementService>(
+          create: (_) => _measurementService,
+        ),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: const AuthScreen(),
+      ),
+    );
+  }
+}
+```
+
+## File Naming Conventions
+
+### Dart Files
+
+- Use **snake_case** for file names: `auth_provider.dart`, `api_config.dart`
+- Match class name to file name: `AuthProvider` → `auth_provider.dart`
+- Use descriptive suffixes:
+  - `*_page.dart` for full-screen pages
+  - `*_widget.dart` for reusable widgets (optional)
+  - `*_service.dart` for services
+  - `*_provider.dart` for state providers
+  - `*_models.dart` for model classes
+
+### Directories
+
+- Use **lowercase** with underscores: `auth/`, `core/`, `scan/`
+- Group by feature: `features/auth/`, `features/scan/`
+
+## Adding New Features
+
+<Steps>
+  <Step title="Create Feature Directory">
+    Create a new directory under `lib/features/`:
+    
+    ```bash
+    mkdir -p lib/features/new_feature/{models,services,providers,presentation/{pages,widgets}}
+    ```
+  </Step>
+
+  <Step title="Create Models">
+    Define data models in `models/`:
+    
+    ```dart lib/features/new_feature/models/feature_models.dart
+    class FeatureRequest {
+      final String id;
+      final String data;
+      
+      FeatureRequest({required this.id, required this.data});
+      
+      Map<String, dynamic> toJson() => {'id': id, 'data': data};
+    }
+    
+    class FeatureResponse {
+      final String result;
+      
+      FeatureResponse({required this.result});
+      
+      factory FeatureResponse.fromJson(Map<String, dynamic> json) {
+        return FeatureResponse(result: json['result'] as String);
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Create Service">
+    Implement API calls in `services/`:
+    
+    ```dart lib/features/new_feature/services/feature_service.dart
+    class FeatureService {
+      final HttpService _httpService;
+      
+      FeatureService(this._httpService);
+      
+      Future<ApiResponse<FeatureResponse>> fetchData(FeatureRequest request) async {
+        return await _httpService.post(
+          '/api/endpoint',
+          request.toJson(),
+          (json) => FeatureResponse.fromJson(json['content']),
+        );
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Create Provider (if needed)">
+    Add state management in `providers/`:
+    
+    ```dart lib/features/new_feature/providers/feature_provider.dart
+    class FeatureProvider extends ChangeNotifier {
+      final FeatureService _service;
+      bool _isLoading = false;
+      String? _error;
+      
+      bool get isLoading => _isLoading;
+      String? get error => _error;
+      
+      FeatureProvider(this._service);
+      
+      Future<void> performAction() async {
+        _isLoading = true;
+        notifyListeners();
+        
+        try {
+          final response = await _service.fetchData(FeatureRequest(...));
+          if (response.isSuccessful) {
+            // Handle success
+          }
+        } finally {
+          _isLoading = false;
+          notifyListeners();
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Create UI">
+    Build pages and widgets in `presentation/`.
+  </Step>
+
+  <Step title="Register in main.dart">
+    Add providers to the app:
+    
+    ```dart lib/main.dart
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>(...),
+        ChangeNotifierProvider<FeatureProvider>(
+          create: (_) => FeatureProvider(_featureService),
+        ),
+      ],
+      child: MaterialApp(...),
+    )
+    ```
+  </Step>
+</Steps>
+
+## Architecture Patterns
+
+### State Management
+
+LogiScan uses the **Provider** pattern for state management:
+
+- **ChangeNotifier**: For mutable state that notifies listeners
+- **Provider**: For dependency injection of services
+- **Consumer**: For rebuilding widgets when state changes
+
+### Dependency Injection
+
+Services are instantiated in `main.dart` and injected via Provider:
+
+```dart
+Provider<MeasurementService>(
+  create: (_) => _measurementService,
+)
+```
+
+### Error Handling
+
+All API calls return `ApiResponse<T>` with success/error states. See [Error Handling](/development/error-handling) for details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup" icon="gear" href="/development/setup">
+    Set up your development environment
+  </Card>
+  <Card title="Theming" icon="palette" href="/development/theming">
+    Customize the app's appearance
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/development/error-handling">
+    Learn error handling patterns
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth-service">
+    Explore API integration
+  </Card>
+</CardGroup>

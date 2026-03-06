@@ -1,0 +1,491 @@
+---
+title: 'StorageService'
+description: 'Persistent storage service for authentication tokens, session data, and user login information'
+---
+
+## Overview
+
+The `StorageService` class provides persistent storage functionality for authentication and session management in LogiScan. It uses `SharedPreferences` to store tokens, expiration times, login data, and session state across app restarts.
+
+**Location**: `lib/core/services/storage_service.dart`
+
+## Constructor
+
+```dart
+StorageService()
+```
+
+No parameters required. The service internally manages a `SharedPreferences` instance.
+
+## Storage Keys
+
+The service uses the following internal keys:
+
+- `auth_token` - Authentication token
+- `auth_token_expiry` - Token expiration timestamp
+- `auth_login_data` - Complete login response data (JSON)
+- `session_active` - Boolean flag for active session
+
+## Methods
+
+### getToken
+
+Retrieves the stored authentication token.
+
+```dart
+Future<String?> getToken() async
+```
+
+#### Returns
+
+<ResponseField name="String?" type="String?">
+  The stored authentication token, or `null` if no token exists or if SharedPreferences is unavailable
+</ResponseField>
+
+#### Error Handling
+
+Gracefully handles `MissingPluginException` when SharedPreferences is not available (e.g., during hot restart without full app restart).
+
+#### Example Usage
+
+```dart storage_service.dart:15-24
+Future<String?> getToken() async {
+  try {
+    final prefs = await _prefs;
+    return prefs.getString(_tokenKey);
+  } on MissingPluginException {
+    // En entornos donde shared_preferences no esté disponible (p.ej. hot restart
+    // sin reinicio completo), devolvemos null de forma segura.
+    return null;
+  }
+}
+```
+
+---
+
+### setToken
+
+Stores an authentication token with a default 1-hour expiration.
+
+```dart
+Future<void> setToken(String token) async
+```
+
+#### Parameters
+
+<ParamField path="token" type="String" required>
+  The authentication token to store
+</ParamField>
+
+#### Behavior
+
+Automatically sets the expiration time to 1 hour from now and calls `setTokenWithExpiry()`.
+
+#### Example Usage
+
+```dart storage_service.dart:26-29
+Future<void> setToken(String token) async {
+  final expiresAt = DateTime.now().add(const Duration(hours: 1));
+  await setTokenWithExpiry(token, expiresAt);
+}
+```
+
+---
+
+### setTokenWithExpiry
+
+Stores an authentication token with a custom expiration time.
+
+```dart
+Future<void> setTokenWithExpiry(String token, DateTime expiresAt) async
+```
+
+#### Parameters
+
+<ParamField path="token" type="String" required>
+  The authentication token to store
+</ParamField>
+
+<ParamField path="expiresAt" type="DateTime" required>
+  The expiration timestamp for the token
+</ParamField>
+
+#### Behavior
+
+- Stores the token as a string
+- Stores the expiration time as an ISO 8601 string
+- Gracefully handles plugin unavailability
+
+#### Example Usage
+
+```dart
+final expiresAt = DateTime.now().add(Duration(hours: 24));
+await storageService.setTokenWithExpiry('token_abc123', expiresAt);
+```
+
+---
+
+### removeToken
+
+Removes the stored token and its expiration time.
+
+```dart
+Future<void> removeToken() async
+```
+
+#### Behavior
+
+Deletes both the token and token expiry keys from storage.
+
+#### Example Implementation
+
+```dart storage_service.dart:41-49
+Future<void> removeToken() async {
+  try {
+    final prefs = await _prefs;
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_tokenExpiryKey);
+  } on MissingPluginException {
+    // No-op si no hay plugin.
+  }
+}
+```
+
+---
+
+### getTokenData
+
+Retrieves both the token and its expiration time as a structured object.
+
+```dart
+Future<TokenData?> getTokenData() async
+```
+
+#### Returns
+
+<ResponseField name="TokenData?" type="TokenData?">
+  A `TokenData` object containing:
+  - `token` - The authentication token string
+  - `expiresAt` - The expiration DateTime
+  
+  Returns `null` if either the token or expiry data is missing.
+</ResponseField>
+
+#### Example Usage
+
+```dart
+final tokenData = await storageService.getTokenData();
+
+if (tokenData != null) {
+  print('Token: ${tokenData.token}');
+  print('Expires at: ${tokenData.expiresAt}');
+  
+  final timeUntilExpiry = tokenData.expiresAt.difference(DateTime.now());
+  if (timeUntilExpiry.isNegative) {
+    print('Token has expired');
+  } else {
+    print('Token expires in ${timeUntilExpiry.inMinutes} minutes');
+  }
+}
+```
+
+---
+
+### hasToken
+
+Checks if a token exists in storage.
+
+```dart
+Future<bool> hasToken() async
+```
+
+#### Returns
+
+<ResponseField name="bool" type="bool">
+  Returns `true` if a token key exists in storage, `false` otherwise
+</ResponseField>
+
+#### Note
+
+This only checks for token existence, not validity or expiration.
+
+#### Example Usage
+
+```dart storage_service.dart:66-73
+Future<bool> hasToken() async {
+  try {
+    final prefs = await _prefs;
+    return prefs.containsKey(_tokenKey);
+  } on MissingPluginException {
+    return false;
+  }
+}
+```
+
+---
+
+### hasActiveSession
+
+Checks if an active user session exists.
+
+```dart
+Future<bool> hasActiveSession() async
+```
+
+#### Returns
+
+<ResponseField name="bool" type="bool">
+  Returns `true` if the session is marked as active, `false` otherwise
+</ResponseField>
+
+#### Behavior
+
+Reads the boolean `session_active` flag from storage. Returns `false` if the key doesn't exist or if SharedPreferences is unavailable.
+
+#### Example Usage
+
+```dart
+if (await storageService.hasActiveSession()) {
+  // User has an active session, proceed to main app
+  navigateToHome();
+} else {
+  // No active session, show login
+  navigateToLogin();
+}
+```
+
+---
+
+### setLoginData
+
+Stores complete login response data and marks the session as active.
+
+```dart
+Future<void> setLoginData(Map<String, dynamic> loginData) async
+```
+
+#### Parameters
+
+<ParamField path="loginData" type="Map<String, dynamic>" required>
+  Complete login response data to persist (will be JSON encoded)
+</ParamField>
+
+#### Behavior
+
+- JSON encodes the login data map and stores it as a string
+- Sets the `session_active` flag to `true`
+- Both operations are performed concurrently using `Future.wait()`
+
+#### Example Usage
+
+```dart storage_service.dart:84-94
+Future<void> setLoginData(Map<String, dynamic> loginData) async {
+  try {
+    final prefs = await _prefs;
+    await Future.wait([
+      prefs.setString(_loginDataKey, jsonEncode(loginData)),
+      prefs.setBool(_sessionKey, true),
+    ]);
+  } on MissingPluginException {
+    // Ignorar silenciosamente.
+  }
+}
+```
+
+**Usage Example:**
+
+```dart
+final loginResponse = {
+  'token': 'abc123',
+  'personFirstName': 'John',
+  'personLastName': 'Doe',
+  'entityName': 'LogiCorp',
+  'imageUrl': 'https://example.com/avatar.jpg',
+  'maxImagesPerPackage': 5,
+};
+
+await storageService.setLoginData(loginResponse);
+```
+
+---
+
+### getLoginData
+
+Retrieves the stored login data.
+
+```dart
+Future<Map<String, dynamic>?> getLoginData() async
+```
+
+#### Returns
+
+<ResponseField name="Map<String, dynamic>?" type="Map<String, dynamic>?">
+  The stored login data as a map, or `null` if no data exists
+</ResponseField>
+
+#### Behavior
+
+Retrieves the JSON string from storage and decodes it back into a Map.
+
+#### Example Usage
+
+```dart
+final loginData = await storageService.getLoginData();
+
+if (loginData != null) {
+  final firstName = loginData['personFirstName'];
+  final lastName = loginData['personLastName'];
+  print('Welcome back, $firstName $lastName!');
+}
+```
+
+---
+
+### clearSession
+
+Clears all session-related data from storage.
+
+```dart
+Future<void> clearSession() async
+```
+
+#### Behavior
+
+Removes all authentication and session data:
+- Authentication token
+- Token expiration time
+- Login data
+- Session active flag
+
+All removal operations are performed concurrently using `Future.wait()`.
+
+#### Example Implementation
+
+```dart storage_service.dart:107-119
+Future<void> clearSession() async {
+  try {
+    final prefs = await _prefs;
+    await Future.wait([
+      prefs.remove(_tokenKey),
+      prefs.remove(_tokenExpiryKey),
+      prefs.remove(_loginDataKey),
+      prefs.remove(_sessionKey),
+    ]);
+  } on MissingPluginException {
+    // No-op.
+  }
+}
+```
+
+#### Example Usage
+
+```dart
+// On user logout
+await storageService.clearSession();
+print('All session data cleared');
+```
+
+## Data Models
+
+### TokenData
+
+A simple data class for storing token information.
+
+```dart storage_service.dart:122-130
+class TokenData {
+  final String token;
+  final DateTime expiresAt;
+
+  const TokenData({
+    required this.token,
+    required this.expiresAt,
+  });
+}
+```
+
+#### Properties
+
+<ParamField path="token" type="String" required>
+  The authentication token string
+</ParamField>
+
+<ParamField path="expiresAt" type="DateTime" required>
+  The timestamp when the token expires
+</ParamField>
+
+#### Usage
+
+```dart
+final tokenData = TokenData(
+  token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  expiresAt: DateTime.now().add(Duration(hours: 1)),
+);
+```
+
+## Error Handling
+
+### MissingPluginException
+
+All methods gracefully handle `MissingPluginException`, which can occur when:
+
+- The app is hot restarted without a full restart
+- SharedPreferences plugin is not properly initialized
+- Running in environments where SharedPreferences is not available
+
+When this exception occurs:
+- Read operations return `null` or `false`
+- Write operations silently fail (no-op)
+
+```dart
+try {
+  final prefs = await _prefs;
+  return prefs.getString(_tokenKey);
+} on MissingPluginException {
+  return null;
+}
+```
+
+## Best Practices
+
+### Token Management
+
+1. **Always set expiration**: Use `setTokenWithExpiry()` when you know the token lifetime
+2. **Check expiration**: Use `getTokenData()` to verify token validity before use
+3. **Clear on logout**: Always call `clearSession()` during logout
+
+### Session Management
+
+1. **Check active session**: Use `hasActiveSession()` at app startup
+2. **Atomic operations**: The service uses `Future.wait()` for atomic multi-key operations
+3. **Restore gracefully**: Handle null returns when restoring session data
+
+### Data Persistence
+
+```dart
+// Good: Save all login data at once
+final loginResponse = response.content!.toJson();
+await storageService.setToken(loginResponse['token']);
+await storageService.setLoginData(loginResponse);
+
+// On app startup
+if (await storageService.hasActiveSession()) {
+  final loginData = await storageService.getLoginData();
+  final token = await storageService.getToken();
+  
+  if (token != null && loginData != null) {
+    // Restore session
+    httpService.setToken(token);
+    return LoginResponse.fromJson(loginData);
+  }
+}
+```
+
+## Related Services
+
+- [AuthService](/api/auth-service) - Primary consumer of StorageService for session management
+- [HttpService](/api/http-service) - Uses stored tokens for authenticated requests
+
+## Dependencies
+
+- **shared_preferences**: Flutter plugin for persistent key-value storage
+- **dart:convert**: For JSON encoding/decoding of login data

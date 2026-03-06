@@ -1,0 +1,524 @@
+---
+title: 'MeasurementService'
+description: 'Service for package measurement processing, registration, tracking verification, and image management'
+---
+
+## Overview
+
+The `MeasurementService` class provides comprehensive functionality for handling package measurements, registering packages, verifying tracking numbers, managing package images, and retrieving package information. This is a core service for LogiScan's package scanning and tracking functionality.
+
+**Location**: `lib/features/scan/services/measurement_service.dart`
+
+## Constructor
+
+```dart
+MeasurementService(HttpService _http)
+```
+
+### Parameters
+
+<ParamField path="_http" type="HttpService" required>
+  The HTTP service instance for making authenticated API requests
+</ParamField>
+
+## Methods
+
+### processMeasurementData
+
+Processes measurement data from a scanned package file and extracts dimensional information.
+
+```dart
+Future<ApiResponse<ProcessMeasurementDataResponse>> processMeasurementData(
+  ProcessMeasurementDataRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="ProcessMeasurementDataRequest" required>
+  Request containing the encoded file with measurement data
+  
+  ```dart
+  ProcessMeasurementDataRequest(
+    file: RequestEncodeFile(
+      encodeContent: base64EncodedString,
+      fileExtension: 'json',
+      fileName: 'measurement_data.json',
+    ),
+  )
+  ```
+</ParamField>
+
+#### Returns
+
+<ResponseField name="ProcessMeasurementDataResponse" type="ApiResponse<ProcessMeasurementDataResponse>">
+  Extracted measurement dimensions:
+  - `weight` - Package weight in configured units
+  - `width` - Package width
+  - `length` - Package length
+  - `height` - Package height
+  
+  All dimension values are nullable doubles.
+</ResponseField>
+
+#### Example Usage
+
+```dart
+final measurementService = MeasurementService(httpService);
+
+final request = ProcessMeasurementDataRequest(
+  file: RequestEncodeFile(
+    encodeContent: base64.encode(measurementFileBytes),
+    fileExtension: 'json',
+    fileName: 'scan_${DateTime.now().millisecondsSinceEpoch}.json',
+  ),
+);
+
+final response = await measurementService.processMeasurementData(request);
+
+if (response.isSuccessful) {
+  final data = response.content;
+  print('Dimensions: ${data?.length}x${data?.width}x${data?.height}');
+  print('Weight: ${data?.weight}');
+}
+```
+
+---
+
+### registerPackage
+
+Registers a new package with tracking information, dimensions, and optional images.
+
+```dart
+Future<ApiResponse<GenericOperationResponse>> registerPackage(
+  RegisterPackageRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="RegisterPackageRequest" required>
+  Complete package registration data
+  
+  ```dart
+  RegisterPackageRequest(
+    trackingNumber: 'TRK123456789',
+    weight: 2.5,
+    width: 10.0,
+    length: 15.0,
+    height: 8.0,
+    files: [/* Optional encoded image files */],
+  )
+  ```
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GenericOperationResponse" type="ApiResponse<GenericOperationResponse>">
+  Operation result with optional user-facing message
+  - `userMessage` - Success or error message for display to user
+</ResponseField>
+
+#### Example Implementation
+
+```dart measurement_service.dart:40-64
+Future<ApiResponse<GenericOperationResponse>> registerPackage(
+  RegisterPackageRequest request,
+) async {
+  try {
+    final response = await _http.post<GenericOperationResponse>(
+      ApiEndpoints.registerPackage,
+      request.toJson(),
+      (json) => GenericOperationResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GenericOperationResponse(userMessage: null),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GenericOperationResponse(userMessage: null),
+    );
+  }
+}
+```
+
+---
+
+### verifyTrackingNumber
+
+Verifies if a tracking number exists and is valid in the system.
+
+```dart
+Future<ApiResponse<VerifyTrackingNumberResponse>> verifyTrackingNumber(
+  VerifyTrackingNumberRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="VerifyTrackingNumberRequest" required>
+  Request containing the tracking number to verify
+</ParamField>
+
+#### Returns
+
+<ResponseField name="VerifyTrackingNumberResponse" type="ApiResponse<VerifyTrackingNumberResponse>">
+  Verification result indicating if the tracking number is valid and any associated information
+</ResponseField>
+
+#### Example Usage
+
+```dart
+final request = VerifyTrackingNumberRequest(
+  trackingNumber: 'TRK123456789',
+);
+
+final response = await measurementService.verifyTrackingNumber(request);
+
+if (response.isSuccessful) {
+  print('Tracking number is valid');
+} else {
+  print('Invalid tracking number: ${response.messageDetail}');
+}
+```
+
+---
+
+### uploadImagesWithoutId
+
+Uploads package images when the package ID is not yet available.
+
+```dart
+Future<ApiResponse<GenericOperationResponse>> uploadImagesWithoutId(
+  UploadPackageImageWithoutIdRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="UploadPackageImageWithoutIdRequest" required>
+  Contains a list of images with identifiers and registration timestamps
+  
+  ```dart
+  UploadPackageImageWithoutIdRequest(
+    images: [
+      UploadPackageImageWithoutIdImageRequest(
+        identifier: 'temp-id-123',
+        encodeContent: base64ImageString,
+        fileExtension: 'jpg',
+        fileName: 'package_front.jpg',
+        userRegistrationDate: DateTime.now(),
+      ),
+    ],
+  )
+  ```
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GenericOperationResponse" type="ApiResponse<GenericOperationResponse>">
+  Operation result with optional status message
+</ResponseField>
+
+---
+
+### getPackageTrackingDetails
+
+Retrieves detailed tracking information for a specific package.
+
+```dart
+Future<ApiResponse<GetPackageTrackingDetailsResponse>> getPackageTrackingDetails(
+  String trackingNumber
+) async
+```
+
+#### Parameters
+
+<ParamField path="trackingNumber" type="String" required>
+  The tracking number of the package to retrieve
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GetPackageTrackingDetailsResponse" type="ApiResponse<GetPackageTrackingDetailsResponse>">
+  Complete package tracking details including status, history, and location information
+</ResponseField>
+
+#### Example Usage
+
+```dart measurement_service.dart:118-145
+Future<ApiResponse<GetPackageTrackingDetailsResponse>>
+    getPackageTrackingDetails(
+  String trackingNumber,
+) async {
+  try {
+    final response = await _http.get<GetPackageTrackingDetailsResponse>(
+      ApiEndpoints.getPackageTrackingDetails,
+      (json) => GetPackageTrackingDetailsResponse.fromJson(json),
+      queryParams: {
+        'identifier': trackingNumber,
+      },
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GetPackageTrackingDetailsResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GetPackageTrackingDetailsResponse.empty(),
+    );
+  }
+}
+```
+
+---
+
+### registerPackageImages
+
+Registers images for an existing package by mobile device.
+
+```dart
+Future<ApiResponse<GenericOperationResponse>> registerPackageImages(
+  RegisterPackageImagesByMobileRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="RegisterPackageImagesByMobileRequest" required>
+  Request containing package identifier and image data
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GenericOperationResponse" type="ApiResponse<GenericOperationResponse>">
+  Operation result indicating success or failure
+</ResponseField>
+
+---
+
+### deleteTrackingPackageImages
+
+Deletes specific images associated with a package tracking number.
+
+```dart
+Future<ApiResponse<GenericOperationResponse>> deleteTrackingPackageImages(
+  DeleteTrackingPackageImagesRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="DeleteTrackingPackageImagesRequest" required>
+  Request specifying which images to delete
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GenericOperationResponse" type="ApiResponse<GenericOperationResponse>">
+  Operation result with deletion status
+</ResponseField>
+
+#### Example Implementation
+
+```dart measurement_service.dart:173-197
+Future<ApiResponse<GenericOperationResponse>> deleteTrackingPackageImages(
+  DeleteTrackingPackageImagesRequest request,
+) async {
+  try {
+    final response = await _http.delete<GenericOperationResponse>(
+      ApiEndpoints.deleteTrackingImages,
+      request.toJson(),
+      (json) => GenericOperationResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GenericOperationResponse(userMessage: null),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GenericOperationResponse(userMessage: null),
+    );
+  }
+}
+```
+
+---
+
+### getPackageOwnerByImage
+
+Identifies the package owner by analyzing a package image using image recognition.
+
+```dart
+Future<ApiResponse<GetPackageOwnerByImageResponse>> getPackageOwnerByImage(
+  GetPackageOwnerByImageRequest request
+) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="GetPackageOwnerByImageRequest" required>
+  Request containing encoded image file for analysis
+  
+  ```dart
+  GetPackageOwnerByImageRequest(
+    file: RequestEncodeFile(
+      encodeContent: base64ImageContent,
+      fileExtension: 'jpg',
+      fileName: 'package_label.jpg',
+    ),
+  )
+  ```
+</ParamField>
+
+#### Returns
+
+<ResponseField name="GetPackageOwnerByImageResponse" type="ApiResponse<GetPackageOwnerByImageResponse>">
+  Package owner identification result:
+  - `ownerPackage` - Enum indicating owner type (globalShipping, gbi, unknown)
+  - `color` - Optional color identifier associated with the owner
+</ResponseField>
+
+#### Owner Types
+
+```dart
+enum OwnerType {
+  globalShipping,
+  gbi,
+  unknown,
+}
+```
+
+#### Example Usage
+
+```dart
+final request = GetPackageOwnerByImageRequest(
+  file: RequestEncodeFile(
+    encodeContent: base64.encode(imageBytes),
+    fileExtension: 'jpg',
+    fileName: 'label_scan.jpg',
+  ),
+);
+
+final response = await measurementService.getPackageOwnerByImage(request);
+
+if (response.isSuccessful) {
+  final owner = response.content;
+  switch (owner?.ownerPackage) {
+    case OwnerType.globalShipping:
+      print('Package belongs to Global Shipping');
+      break;
+    case OwnerType.gbi:
+      print('Package belongs to GBI');
+      break;
+    case OwnerType.unknown:
+      print('Package owner could not be determined');
+      break;
+  }
+}
+```
+
+## Key Data Models
+
+### ProcessMeasurementDataRequest
+
+```dart
+class ProcessMeasurementDataRequest {
+  final RequestEncodeFile file;
+}
+```
+
+### ProcessMeasurementDataResponse
+
+```dart
+class ProcessMeasurementDataResponse {
+  final double? weight;
+  final double? width;
+  final double? length;
+  final double? height;
+}
+```
+
+### RegisterPackageRequest
+
+```dart
+class RegisterPackageRequest {
+  final String trackingNumber;
+  final double weight;
+  final double width;
+  final double length;
+  final double height;
+  final List<RequestEncodeFile>? files;
+}
+```
+
+### RequestEncodeFile
+
+```dart
+class RequestEncodeFile {
+  final String encodeContent;  // Base64 encoded file content
+  final String fileExtension;  // e.g., 'jpg', 'json'
+  final String fileName;       // Original filename
+}
+```
+
+### GenericOperationResponse
+
+```dart
+class GenericOperationResponse {
+  final String? userMessage;
+}
+```
+
+## Error Handling
+
+All methods follow a consistent error handling pattern:
+
+1. Wrap HTTP calls in try-catch blocks
+2. Return `ApiResponse.error()` with appropriate error messages
+3. Provide empty or default content objects on failure
+4. Include error details from the API when available
+
+```dart
+if (!response.isSuccessful) {
+  return ApiResponse.error(
+    messageDetail: response.messageDetail,
+    content: const GenericOperationResponse(userMessage: null),
+  );
+}
+```
+
+## Related Services
+
+- [HttpService](/api/http-service) - Handles HTTP requests and authentication
+- [AuthService](/api/auth-service) - Manages authentication tokens required for API calls
+
+## API Endpoints Used
+
+- `POST /process-measurement` - Process measurement data
+- `POST /register-package` - Register new package
+- `POST /verify-tracking-number` - Verify tracking number
+- `POST /upload-package-image-without-id` - Upload images without package ID
+- `GET /package-tracking-details` - Get package details
+- `POST /register-package-images` - Register package images
+- `DELETE /delete-tracking-images` - Delete package images
+- `POST /get-package-owner-by-image` - Identify package owner

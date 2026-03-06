@@ -1,0 +1,357 @@
+---
+title: 'Package Scanning'
+description: 'Scan barcodes and QR codes to capture tracking numbers and package information'
+icon: 'barcode-scanner'
+---
+
+## Overview
+
+LogiScan's package scanning feature enables warehouse staff to quickly capture tracking numbers and package information using mobile device cameras. The scanning functionality supports both 1D barcodes and 2D QR codes, with automatic detection and validation.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Barcode Scanning" icon="barcode">
+    Automatic detection of 1D and 2D barcodes with real-time validation
+  </Card>
+  <Card title="Manual Entry" icon="keyboard">
+    Manual tracking number input with infrared scanner support
+  </Card>
+  <Card title="Duplicate Detection" icon="warning">
+    Real-time verification to prevent duplicate package entries
+  </Card>
+  <Card title="Multi-Format Support" icon="grid">
+    Supports tracking numbers from 6-35 characters in length
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The scanning process is designed for speed and accuracy in warehouse environments:
+
+1. **Initiate Scan**: Tap the scan button or use the camera icon
+2. **Auto-Detect**: The camera automatically detects and reads barcodes
+3. **Validate**: System validates format and checks for duplicates
+4. **Capture Details**: Add measurements, weight, and photos
+5. **Register**: Save the package to the system
+
+<Note>
+  The scanner automatically detects codes - no need to tap a capture button. Simply align the code within the frame.
+</Note>
+
+## Scanning Implementation
+
+### Camera Scanner Component
+
+The main scanning interface uses the `mobile_scanner` package for barcode detection:
+
+```dart
+class _TrackingScannerPage extends StatefulWidget {
+  const _TrackingScannerPage();
+
+  @override
+  State<_TrackingScannerPage> createState() => _TrackingScannerPageState();
+}
+
+class _TrackingScannerPageState extends State<_TrackingScannerPage> {
+  final MobileScannerController _controller = MobileScannerController();
+  bool _isHandling = false;
+
+  void _handleBarcode(BarcodeCapture capture) {
+    if (_isHandling) return;
+
+    final codes = capture.barcodes;
+    if (codes.isEmpty) return;
+
+    final String? raw = codes.first.rawValue;
+    if (raw == null) return;
+
+    final normalized = raw.trim();
+    final bool isValid =
+        RegExp(r'^[A-Z0-9-]+$').hasMatch(normalized) &&
+        normalized.length >= 6 &&
+        normalized.length <= 35;
+
+    if (!isValid) return;
+
+    setState(() => _isHandling = true);
+    _controller.stop();
+    Navigator.of(context).pop<String>(normalized);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Scan tracking number'),
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(controller: _controller, onDetect: _handleBarcode),
+          Center(
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.8,
+              height: MediaQuery.of(context).size.width * 0.3,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  width: 3,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+### Tracking Number Validation
+
+All scanned tracking numbers are validated for format and checked against the backend to prevent duplicates:
+
+```dart
+Future<void> _verifyTrackingOnInput() async {
+  final tracking = _codeController.text.trim();
+
+  if (tracking.isEmpty || tracking.length < 6) {
+    setState(() {
+      _trackingAlreadyExists = false;
+    });
+    return;
+  }
+
+  if (_isVerifyingTracking) return;
+
+  setState(() {
+    _isVerifyingTracking = true;
+  });
+
+  final measurementService = context.read<MeasurementService>();
+  final verifyRequest = VerifyTrackingNumberRequest(trackingNumber: tracking);
+  final verifyResponse = await measurementService.verifyTrackingNumber(
+    verifyRequest,
+  );
+
+  if (!mounted) return;
+
+  if (!verifyResponse.isSuccessful) {
+    final String backendMsg = verifyResponse.displayMessage ?? '';
+    final String msg = backendMsg.isNotEmpty
+        ? backendMsg
+        : 'Unable to verify this tracking number.';
+
+    MessageHelper.showIconSnackBar(context, message: msg, isSuccess: false);
+
+    setState(() {
+      _trackingAlreadyExists = false;
+      _isVerifyingTracking = false;
+    });
+    return;
+  }
+
+  final isRegistered = verifyResponse.content?.isRegistered == true;
+  setState(() {
+    _trackingAlreadyExists = isRegistered;
+    _isVerifyingTracking = false;
+  });
+}
+```
+
+## Scanner UI Components
+
+The scan page includes several helper components to guide users:
+
+### Tracking Input Field
+
+Combines manual entry with camera scanning:
+
+```dart
+Row(
+  children: [
+    Expanded(
+      child: TextField(
+        controller: _codeController,
+        focusNode: _trackingFocusNode,
+        textCapitalization: TextCapitalization.characters,
+        onChanged: (value) {
+          // Debounced verification
+          _trackingDebounce?.cancel();
+          _trackingDebounce = Timer(const Duration(milliseconds: 80), () {
+            if (!mounted) return;
+            if (tracking.length < 6) {
+              MessageHelper.showIconSnackBar(
+                context,
+                message: 'Tracking number must be at least 6 characters long.',
+                isSuccess: false,
+              );
+              return;
+            }
+            _verifyTrackingOnInput();
+          });
+        },
+        decoration: const InputDecoration(
+          filled: true,
+          fillColor: Color(0xFFF9FAFB),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+          ),
+          hintText: 'Tracking Number',
+        ),
+      ),
+    ),
+    const SizedBox(width: 8),
+    GestureDetector(
+      onTap: () async {
+        final result = await Navigator.of(context).push<String>(
+          MaterialPageRoute(
+            builder: (_) => const _TrackingScannerPage(),
+          ),
+        );
+        if (!mounted) return;
+        if (result != null && result.isNotEmpty) {
+          setState(() {
+            _codeController.text = result.trim();
+          });
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
+        ),
+        child: const Icon(
+          Icons.photo_camera_outlined,
+          color: Color(0xFF111827),
+        ),
+      ),
+    ),
+  ],
+)
+```
+
+<Warning>
+  Always validate tracking numbers before attempting to register packages. Duplicate entries can cause data integrity issues.
+</Warning>
+
+## Infrared Scanner Support
+
+LogiScan supports infrared handheld scanners that directly input text into focused fields:
+
+- Focus the tracking number input field
+- Use the infrared scanner to scan the barcode
+- The scanned text is automatically entered and validated
+- No additional camera UI is required
+
+<Tip>
+  For high-volume operations, infrared scanners provide faster throughput than camera-based scanning.
+</Tip>
+
+## Validation Rules
+
+### Tracking Number Format
+
+- **Length**: 6-35 characters
+- **Characters**: Alphanumeric and hyphens only (A-Z, 0-9, -)
+- **Case**: Automatically converted to uppercase
+- **Whitespace**: Trimmed automatically
+
+### Duplicate Detection
+
+The system performs real-time duplicate detection with the following behavior:
+
+```dart
+class VerifyTrackingNumberResponse {
+  /// Indicates if the tracking number has a registration
+  final bool isRegistered;
+
+  /// Registration date of the tracking (can be null)
+  final DateTime? registrationDateTime;
+
+  const VerifyTrackingNumberResponse({
+    required this.isRegistered,
+    this.registrationDateTime,
+  });
+}
+```
+
+When a duplicate is detected:
+- Warning icon is displayed
+- Registration date is shown (if available)
+- User can still proceed (with warning)
+- Backend handles final duplicate resolution
+
+## Best Practices
+
+<Steps>
+  <Step title="Clean Labels">
+    Ensure barcodes and labels are clean and well-lit for optimal scanning
+  </Step>
+  <Step title="Stable Position">
+    Hold the device steady and allow the auto-focus to work
+  </Step>
+  <Step title="Verify First">
+    Always wait for the verification indicator before proceeding
+  </Step>
+  <Step title="Add Photos">
+    Capture at least one photo per package to prevent disputes
+  </Step>
+</Steps>
+
+## API Integration
+
+Scanning integrates with the tracking verification endpoint:
+
+**Endpoint**: `/api/mobile/v1.0/Tracking/verify-tracking-number`
+
+**Request**:
+```json
+{
+  "trackingNumber": "ABC123456789"
+}
+```
+
+**Response**:
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "content": {
+    "isRegistered": false,
+    "registrationDateTime": null
+  }
+}
+```
+
+## Common Issues
+
+### Scanner Not Detecting
+
+- Check camera permissions in device settings
+- Ensure adequate lighting conditions
+- Clean the camera lens
+- Try manual entry as fallback
+
+### Validation Errors
+
+- Verify tracking number format (6-35 chars, alphanumeric)
+- Check network connectivity for real-time validation
+- Ensure API endpoints are accessible
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Image Processing" icon="image" href="/features/image-processing">
+    Learn about package photo capture
+  </Card>
+  <Card title="AI Measurement" icon="ruler" href="/features/ai-measurement">
+    Automatic dimension extraction from photos
+  </Card>
+</CardGroup>

@@ -1,0 +1,556 @@
+---
+title: 'HttpService'
+description: 'Core HTTP service for making authenticated API requests with automatic token refresh and session management'
+---
+
+## Overview
+
+The `HttpService` class is the foundational service for all HTTP communication in LogiScan. It provides GET, POST, and DELETE methods with built-in authentication, automatic token refresh, session expiry handling, version checking, and comprehensive error handling.
+
+**Location**: `lib/core/services/http_service.dart`
+
+## Constructor
+
+```dart
+HttpService({
+  required String baseUrl,
+  Function()? onSessionExpired,
+  Future<bool> Function()? onTokenRefreshNeeded,
+})
+```
+
+### Parameters
+
+<ParamField path="baseUrl" type="String" required>
+  The base URL for all API requests (e.g., `https://api.logiscan.com`)
+</ParamField>
+
+<ParamField path="onSessionExpired" type="Function()?">
+  Optional callback invoked when the session expires or token becomes invalid
+</ParamField>
+
+<ParamField path="onTokenRefreshNeeded" type="Future<bool> Function()?">
+  Optional callback for automatic token refresh. Should return `true` if refresh was successful
+</ParamField>
+
+## Properties
+
+### Callbacks
+
+```dart
+Function()? onSessionExpired
+Future<bool> Function()? onTokenRefreshNeeded
+Function(VersionResponse)? onVersionCheckRequired
+```
+
+These callbacks can be set to handle specific events:
+
+- **onSessionExpired**: Called when a 401 response indicates session expiry
+- **onTokenRefreshNeeded**: Called to refresh the token before making requests
+- **onVersionCheckRequired**: Called when API response headers indicate an app update is available
+
+### Getters/Setters
+
+```dart
+set tokenRefreshCallback(Future<bool> Function()? callback)
+set versionCheckCallback(Function(VersionResponse)? callback)
+```
+
+Alternative setters for configuring callbacks.
+
+## Methods
+
+### setToken
+
+Sets the authentication token for subsequent requests.
+
+```dart
+void setToken(String? token)
+```
+
+#### Parameters
+
+<ParamField path="token" type="String?" required>
+  The authentication token. Can be with or without "Bearer " prefix. Pass `null` to clear the token.
+</ParamField>
+
+#### Behavior
+
+- Automatically adds "Bearer " prefix if not present
+- Clears the token when `null` or empty string is passed
+- Resets `_isHandlingExpiredSession` flag
+- Logs token operations for debugging
+
+#### Example Usage
+
+```dart http_service.dart:39-49
+void setToken(String? token) {
+  if (token == null || token.trim().isEmpty) {
+    _token = null;
+    AppLogger.log('Token cleared', source: 'HttpService');
+    return;
+  }
+
+  _token = token.startsWith('Bearer ') ? token : 'Bearer $token';
+  AppLogger.log('Token set', source: 'HttpService', type: 'AUTH');
+  _isHandlingExpiredSession = false;
+}
+```
+
+---
+
+### get
+
+Performs a GET request to the specified endpoint.
+
+```dart
+Future<ApiResponse<T>> get<T>(
+  String path,
+  T Function(Map<String, dynamic> json) fromJson, {
+  Map<String, dynamic>? queryParams,
+  bool suppressAuthHandling = false,
+}) async
+```
+
+#### Parameters
+
+<ParamField path="path" type="String" required>
+  The API endpoint path (e.g., `/users/profile`). Will be appended to baseUrl.
+</ParamField>
+
+<ParamField path="fromJson" type="T Function(Map<String, dynamic>)" required>
+  Function to deserialize the JSON response into type T
+</ParamField>
+
+<ParamField path="queryParams" type="Map<String, dynamic>?">
+  Optional query parameters to append to the URL
+</ParamField>
+
+<ParamField path="suppressAuthHandling" type="bool" default="false">
+  If `true`, skips automatic session expiry handling and token refresh. Used to prevent infinite loops during auth operations.
+</ParamField>
+
+#### Returns
+
+<ResponseField name="ApiResponse<T>" type="ApiResponse<T>">
+  Wrapped response containing:
+  - `isSuccessful` - Whether the request succeeded
+  - `message` - Success message (if any)
+  - `messageDetail` - Error message (if failed)
+  - `content` - Parsed response data of type T
+</ResponseField>
+
+#### Behavior
+
+1. Constructs URL with base URL, path, and query parameters
+2. Adds authentication headers (Authorization, Content-Type, version headers)
+3. Makes HTTP GET request with 30-second timeout
+4. Checks response headers for version updates
+5. Handles HTTP status codes:
+   - **503/501**: Returns server error
+   - **401**: Attempts token refresh, then triggers session expiry if needed
+   - **Other codes**: Parses response JSON and checks API error codes
+6. Logs all requests and responses for debugging
+
+#### Error Code Handling
+
+```dart
+if (code == ApiErrorCode.sessionExpired || code == ApiErrorCode.invalidToken) {
+  await _handleSessionExpired(
+    suppressAuthHandling: suppressAuthHandling,
+    messageDetail: messageDetail,
+  );
+  return ApiResponse.error(messageDetail: messageDetail, content: null);
+}
+```
+
+#### Example Usage
+
+```dart
+final response = await httpService.get<UserProfile>(
+  '/users/profile',
+  (json) => UserProfile.fromJson(json),
+  queryParams: {'userId': '12345'},
+);
+
+if (response.isSuccessful) {
+  final profile = response.content;
+  print('User: ${profile?.name}');
+} else {
+  print('Error: ${response.messageDetail}');
+}
+```
+
+---
+
+### post
+
+Performs a POST request to the specified endpoint.
+
+```dart
+Future<ApiResponse<T>> post<T>(
+  String path,
+  dynamic data,
+  T Function(Map<String, dynamic> json) fromJson, {
+  bool suppressAuthHandling = false,
+}) async
+```
+
+#### Parameters
+
+<ParamField path="path" type="String" required>
+  The API endpoint path
+</ParamField>
+
+<ParamField path="data" type="dynamic" required>
+  Request body data (will be JSON encoded)
+</ParamField>
+
+<ParamField path="fromJson" type="T Function(Map<String, dynamic>)" required>
+  Function to deserialize the JSON response
+</ParamField>
+
+<ParamField path="suppressAuthHandling" type="bool" default="false">
+  Skip automatic auth handling (used for login/refresh operations)
+</ParamField>
+
+#### Returns
+
+<ResponseField name="ApiResponse<T>" type="ApiResponse<T>">
+  Wrapped response with success status, messages, and parsed content
+</ResponseField>
+
+#### Behavior
+
+1. Calls `onTokenRefreshNeeded` callback before making request (unless suppressed)
+2. JSON encodes the request body
+3. Sends POST request with authentication headers
+4. Handles version checks and status codes (similar to GET)
+5. Parses response and returns typed ApiResponse
+
+#### Example Implementation
+
+```dart http_service.dart:226-331
+Future<ApiResponse<T>> post<T>(
+  String path,
+  dynamic data,
+  T Function(Map<String, dynamic> json) fromJson, {
+  bool suppressAuthHandling = false,
+}) async {
+  if (!path.contains('refresh-token') && !path.contains('check')) {
+    AppLogger.log(
+      'HTTP POST Request to $baseUrl$path with body: ${jsonEncode(data)}',
+      source: 'HttpService',
+    );
+  }
+
+  try {
+    if (!suppressAuthHandling && onTokenRefreshNeeded != null) {
+      await onTokenRefreshNeeded!.call();
+    }
+
+    final client = http.Client();
+    final response = await client
+        .post(
+          Uri.parse(baseUrl + path),
+          headers: _headers,
+          body: jsonEncode(data),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    developer.log('Response Status: ${response.statusCode}',
+        name: 'HttpService');
+    final sanitizedBody = _sanitizeBodyForLog(baseUrl + path, response.body);
+    developer.log('Response Body: $sanitizedBody', name: 'HttpService');
+
+    _checkVersionHeaders(response.headers);
+
+    if (response.statusCode == 503 || response.statusCode == 501) {
+      return ApiResponse.error(
+        messageDetail: 'Ocurrió un error en el servidor',
+        content: null,
+      );
+    }
+
+    if (response.statusCode == 401) {
+      String? refreshedMessageDetail;
+      try {
+        final Map<String, dynamic> parsed401 = response.body.isNotEmpty
+            ? (jsonDecode(response.body) as Map<String, dynamic>)
+            : <String, dynamic>{};
+        refreshedMessageDetail = parsed401['messageDetail'] as String?;
+      } catch (_) {}
+
+      await _handleSessionExpired(
+        suppressAuthHandling: suppressAuthHandling,
+        messageDetail: refreshedMessageDetail,
+      );
+
+      return ApiResponse.error(
+        messageDetail: refreshedMessageDetail ??
+            'Su sesión ha finalizado, por favor ingrese de nuevo',
+        content: null,
+      );
+    }
+
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (_) {
+      return ApiResponse.error(messageDetail: null, content: null);
+    }
+
+    final int code = json['code'] as int? ?? ApiErrorCode.unknown;
+    final String? message = json['message'] as String?;
+    final String? messageDetail = json['messageDetail'] as String?;
+
+    final error = ApiError(code: code, message: messageDetail ?? '');
+    if (error.isAuthError || code == ApiErrorCode.invalidToken) {
+      await _handleSessionExpired(
+        suppressAuthHandling: suppressAuthHandling,
+        messageDetail: messageDetail,
+      );
+      return ApiResponse.error(
+        messageDetail: messageDetail ?? '',
+        content: null,
+      );
+    }
+
+    if (code > 1) {
+      return ApiResponse.error(messageDetail: messageDetail ?? '');
+    }
+
+    return ApiResponse(
+      isSuccessful: true,
+      message: message,
+      messageDetail: messageDetail,
+      content: fromJson(json),
+    );
+  } catch (e) {
+    AppLogger.error('Error en POST request', error: e, source: 'HttpService');
+    final error = ApiError(
+      code: e is TimeoutException
+          ? ApiErrorCode.timeout
+          : ApiErrorCode.networkError,
+      message: e.toString(),
+    );
+    return ApiResponse.error(messageDetail: error.userMessage);
+  }
+}
+```
+
+#### Example Usage
+
+```dart
+final loginRequest = {
+  'username': 'user@example.com',
+  'password': 'password123',
+};
+
+final response = await httpService.post<LoginResponse>(
+  '/auth/login',
+  loginRequest,
+  (json) => LoginResponse.fromJson(json),
+);
+```
+
+---
+
+### delete
+
+Performs a DELETE request to the specified endpoint.
+
+```dart
+Future<ApiResponse<T>> delete<T>(
+  String path,
+  dynamic data,
+  T Function(Map<String, dynamic> json) fromJson, {
+  bool suppressAuthHandling = false,
+}) async
+```
+
+#### Parameters
+
+<ParamField path="path" type="String" required>
+  The API endpoint path
+</ParamField>
+
+<ParamField path="data" type="dynamic" required>
+  Request body data (will be JSON encoded)
+</ParamField>
+
+<ParamField path="fromJson" type="T Function(Map<String, dynamic>)" required>
+  Function to deserialize the JSON response
+</ParamField>
+
+<ParamField path="suppressAuthHandling" type="bool" default="false">
+  Skip automatic auth handling
+</ParamField>
+
+#### Returns
+
+<ResponseField name="ApiResponse<T>" type="ApiResponse<T>">
+  Wrapped response with operation result
+</ResponseField>
+
+#### Behavior
+
+Identical to POST method but uses HTTP DELETE verb. Follows the same error handling and authentication flow.
+
+#### Example Usage
+
+```dart
+final deleteRequest = {
+  'trackingNumber': 'TRK123456789',
+  'imageIds': ['img1', 'img2'],
+};
+
+final response = await httpService.delete<GenericOperationResponse>(
+  '/package-images',
+  deleteRequest,
+  (json) => GenericOperationResponse.fromJson(json),
+);
+```
+
+## Advanced Features
+
+### Automatic Token Refresh
+
+The service implements automatic token refresh on 401 responses:
+
+1. When a 401 is received on GET requests, it attempts to refresh the token
+2. If refresh succeeds, it retries the original request
+3. If refresh fails, it triggers session expiry
+
+```dart http_service.dart:149-160
+if (response.statusCode == 401) {
+  if (!_isHandlingExpiredSession && !suppressAuthHandling) {
+    final refreshed = await _attemptTokenRefresh();
+    if (refreshed) {
+      return await get<T>(
+        path,
+        fromJson,
+        queryParams: queryParams,
+        suppressAuthHandling: true,
+      );
+    }
+  }
+  // ... handle session expiry
+}
+```
+
+### Version Checking
+
+The service automatically checks response headers for version information:
+
+```dart http_service.dart:65-78
+void _checkVersionHeaders(Map<String, String> responseHeaders) {
+  try {
+    final versionResponse = VersionResponse.fromHeaders(responseHeaders);
+    if (versionResponse.updateRequired || versionResponse.updateAvailable) {
+      AppLogger.log(
+        'Version check response: updateRequired=${versionResponse.updateRequired}, updateAvailable=${versionResponse.updateAvailable}',
+        source: 'HttpService',
+      );
+      onVersionCheckRequired?.call(versionResponse);
+    }
+  } catch (e) {
+    AppLogger.log('Error checking version headers: $e', source: 'HttpService');
+  }
+}
+```
+
+### Session Expiry Handling
+
+Prevents duplicate session expiry callbacks with internal flag:
+
+```dart http_service.dart:91-114
+Future<void> _handleSessionExpired({
+  bool suppressAuthHandling = false,
+  String? messageDetail,
+}) async {
+  if (suppressAuthHandling) {
+    AppLogger.log('Skipping session expired handling', source: 'HttpService');
+    return;
+  }
+  if (_isHandlingExpiredSession) {
+    AppLogger.log('Session expired already handled', source: 'HttpService');
+    return;
+  }
+
+  _isHandlingExpiredSession = true;
+  try {
+    _token = null;
+    if (onSessionExpired != null) {
+      AppLogger.log('Calling onSessionExpired callback', source: 'HttpService');
+      await Future(() => onSessionExpired!());
+    }
+  } finally {
+    _isHandlingExpiredSession = false;
+  }
+}
+```
+
+### Request Headers
+
+All requests include:
+
+- `Content-Type: application/json`
+- `Accept: application/json`
+- `Authorization: Bearer <token>` (when token is set)
+- Version headers from VersionService
+
+```dart http_service.dart:51-56
+Map<String, String> get _headers => {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json',
+  if (_token != null) 'Authorization': _token!,
+  ...VersionService.instance.versionHeaders,
+};
+```
+
+## Error Handling
+
+### HTTP Status Codes
+
+- **401 Unauthorized**: Triggers token refresh or session expiry
+- **503/501 Server Error**: Returns generic server error message
+- **Other codes**: Parsed from JSON response body
+
+### API Error Codes
+
+The service checks the `code` field in response JSON:
+
+- `code > 1`: Treated as application error
+- `code == ApiErrorCode.sessionExpired`: Triggers session expiry
+- `code == ApiErrorCode.invalidToken`: Triggers session expiry
+
+### Network Errors
+
+- **TimeoutException**: Returns `ApiErrorCode.timeout`
+- **Other exceptions**: Returns `ApiErrorCode.networkError`
+
+## Logging
+
+All HTTP operations are logged using `AppLogger`:
+
+- Request URLs and parameters
+- Response status codes and bodies
+- Authentication events (token set/cleared)
+- Error conditions
+
+Sensitive data in request/response bodies can be sanitized via `_sanitizeBodyForLog()`.
+
+## Related Services
+
+- [AuthService](/api/auth-service) - Uses HttpService for authentication requests
+- [MeasurementService](/api/measurement-service) - Uses HttpService for package operations
+- [StorageService](/api/storage-service) - Works with HttpService for token persistence
+
+## Best Practices
+
+1. **Always provide fromJson function**: Each response type needs a deserializer
+2. **Use suppressAuthHandling carefully**: Only for login/refresh to avoid infinite loops
+3. **Handle ApiResponse.isSuccessful**: Always check before accessing content
+4. **Set callbacks early**: Configure session and refresh callbacks during initialization
+5. **Log appropriately**: Be mindful of sensitive data in logs

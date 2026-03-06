@@ -1,0 +1,126 @@
+---
+title: Introduction
+description: LogiScan is a Flutter mobile application for package scanning, tracking, and logistics management with AI-powered measurement capabilities.
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, #3dcffc 0%, #0b5b9c 100%)',
+  borderRadius: '20px',
+  padding: '60px 40px',
+  textAlign: 'center',
+  marginBottom: '40px',
+  color: '#ffffff'
+}}>
+  <h1 style={{
+    fontSize: '48px',
+    fontWeight: '700',
+    marginBottom: '20px',
+    color: '#ffffff'
+  }}>Welcome to LogiScan</h1>
+  <p style={{
+    fontSize: '20px',
+    maxWidth: '700px',
+    margin: '0 auto',
+    opacity: '0.95'
+  }}>
+    A powerful Flutter mobile application for package scanning, tracking, and logistics management with AI-powered measurement capabilities.
+  </p>
+</div>
+
+## What is LogiScan?
+
+LogiScan is a comprehensive mobile logistics solution built with Flutter that combines QR code scanning, AI-powered package measurement, and real-time tracking capabilities. Designed for logistics professionals, LogiScan streamlines package management workflows with intelligent automation and seamless backend integration.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="QR & Barcode Scanning" icon="qrcode" href="/features/scanning">
+    Scan package labels and barcodes with the built-in camera for instant identification
+  </Card>
+  <Card title="AI-Powered Measurement" icon="ruler-combined" href="/features/ai-measurement">
+    Automatically measure package dimensions using advanced AI image processing
+  </Card>
+  <Card title="Package Tracking" icon="location-dot" href="/features/package-tracking">
+    Track packages in real-time with comprehensive tracking details and history
+  </Card>
+  <Card title="Image Processing" icon="image" href="/features/image-processing">
+    Capture and manage package photos with intelligent owner recognition
+  </Card>
+  <Card title="Secure Authentication" icon="lock" href="/features/authentication">
+    Token-based authentication with automatic refresh and secure credential storage
+  </Card>
+  <Card title="Firebase Integration" icon="fire" href="/architecture/overview">
+    Built-in crash analytics and monitoring with Firebase Crashlytics
+  </Card>
+</CardGroup>
+
+## Why LogiScan?
+
+<AccordionGroup>
+  <Accordion title="Streamlined Workflows">
+    LogiScan eliminates manual data entry with automated scanning and measurement, reducing processing time and human error in package handling workflows.
+  </Accordion>
+  <Accordion title="AI-Powered Automation">
+    Advanced computer vision technology measures package dimensions automatically, eliminating the need for manual measurements and improving accuracy.
+  </Accordion>
+  <Accordion title="Real-Time Synchronization">
+    All package data syncs instantly with your backend systems, ensuring team members have up-to-date information across all devices.
+  </Accordion>
+  <Accordion title="Enterprise-Ready Security">
+    Built with security in mind, featuring token-based authentication, secure credential storage, and automatic session management.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Start
+
+Get started with LogiScan in minutes:
+
+<Steps>
+  <Step title="Install Dependencies">
+    Clone the repository and install Flutter dependencies
+    ```bash
+    git clone https://github.com/JC-DEV-EC/LogiScan.git
+    cd LogiScan
+    flutter pub get
+    ```
+  </Step>
+  <Step title="Configure Firebase">
+    Set up Firebase for your project and add the configuration files
+  </Step>
+  <Step title="Run the App">
+    Launch LogiScan on your device or emulator
+    ```bash
+    flutter run
+    ```
+  </Step>
+</Steps>
+
+## Architecture Overview
+
+LogiScan is built with a clean, modular architecture:
+
+- **Core Layer**: Shared services, HTTP client, storage, and error handling
+- **Features Layer**: Domain-specific modules (authentication, scanning, tracking)
+- **Presentation Layer**: Flutter UI components and state management with Provider
+- **API Integration**: RESTful API client with automatic token refresh
+
+<Card title="Explore the Architecture" icon="sitemap" href="/architecture/overview">
+  Learn more about LogiScan's architecture and design patterns
+</Card>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Follow our quickstart guide to build and run LogiScan
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation instructions for all platforms
+  </Card>
+  <Card title="Core Features" icon="star" href="/features/scanning">
+    Explore LogiScan's powerful features in depth
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth-service">
+    Complete API documentation for developers
+  </Card>
+</CardGroup>

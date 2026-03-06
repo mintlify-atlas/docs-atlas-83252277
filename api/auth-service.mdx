@@ -1,0 +1,330 @@
+---
+title: 'AuthService'
+description: 'Authentication service for managing user sessions, login, logout, and token refresh in LogiScan'
+---
+
+## Overview
+
+The `AuthService` class handles all authentication operations in LogiScan, including user login, session management, token storage, and automatic token refresh. It coordinates between HTTP requests, local storage, and secure credential storage.
+
+**Location**: `lib/features/auth/services/auth_service.dart`
+
+## Constructor
+
+```dart
+AuthService(
+  HttpService _http,
+  StorageService _storage,
+  SecureCredentialsService _secureStorage,
+)
+```
+
+### Parameters
+
+<ParamField path="_http" type="HttpService" required>
+  The HTTP service instance for making API requests
+</ParamField>
+
+<ParamField path="_storage" type="StorageService" required>
+  The storage service for persisting session data and tokens
+</ParamField>
+
+<ParamField path="_secureStorage" type="SecureCredentialsService" required>
+  The secure storage service for storing sensitive credentials
+</ParamField>
+
+### Behavior
+
+The constructor automatically calls `_restoreToken()` to restore any previously saved authentication token and set it on the HTTP service.
+
+## Methods
+
+### restoreSession
+
+Restores a previously saved user session from local storage.
+
+```dart
+Future<LoginResponse?> restoreSession() async
+```
+
+#### Returns
+
+<ResponseField name="LoginResponse" type="LoginResponse?">
+  Returns the stored login data if a valid session exists, otherwise returns `null`
+</ResponseField>
+
+#### Behavior
+
+1. Checks if an active session exists in storage
+2. Retrieves the stored token and login data
+3. If valid, sets the token on the HTTP service
+4. Returns the login response data
+
+#### Example Usage
+
+```dart auth_service.dart:18-30
+Future<LoginResponse?> restoreSession() async {
+  final hasSession = await _storage.hasActiveSession();
+  final token = await _storage.getToken();
+  final loginData = await _storage.getLoginData();
+
+  if (hasSession && token != null) {
+    _http.setToken(token);
+    if (loginData != null) {
+      return LoginResponse.fromJson(loginData);
+    }
+  }
+  return null;
+}
+```
+
+---
+
+### login
+
+Authenticates a user with username and password.
+
+```dart
+Future<ApiResponse<LoginResponse>> login(LoginRequest request) async
+```
+
+#### Parameters
+
+<ParamField path="request" type="LoginRequest" required>
+  Login credentials containing username and password
+  
+  ```dart
+  LoginRequest(
+    username: 'user@example.com',
+    password: 'password123',
+  )
+  ```
+</ParamField>
+
+#### Returns
+
+<ResponseField name="ApiResponse<LoginResponse>" type="ApiResponse<LoginResponse>">
+  Wrapped response containing authentication token and user information
+  
+  **Success Response Fields:**
+  - `token` - JWT authentication token
+  - `personFirstName` - User's first name
+  - `personLastName` - User's last name
+  - `entityName` - Associated entity/company name
+  - `imageUrl` - User's profile image URL
+  - `maxImagesPerPackage` - Maximum allowed images per package
+</ResponseField>
+
+#### Behavior
+
+1. Sends POST request to login endpoint
+2. On success:
+   - Extracts and stores the authentication token
+   - Sets token on HTTP service for subsequent requests
+   - Persists login data to local storage
+3. On failure:
+   - Returns error response with message details
+
+#### Example Usage
+
+```dart
+final authService = AuthService(httpService, storageService, secureStorage);
+
+final loginRequest = LoginRequest(
+  username: 'user@logiscan.com',
+  password: 'securePassword',
+);
+
+final response = await authService.login(loginRequest);
+
+if (response.isSuccessful) {
+  final user = response.content;
+  print('Welcome ${user?.personFirstName}!');
+  print('Token: ${user?.token}');
+} else {
+  print('Login failed: ${response.messageDetail}');
+}
+```
+
+---
+
+### logout
+
+Logs out the current user and clears all stored session data.
+
+```dart
+Future<void> logout() async
+```
+
+#### Behavior
+
+1. Clears the token from HTTP service (sets to `null`)
+2. Clears all session data from storage (token, login data, session flag)
+3. Clears stored credentials from secure storage
+
+#### Example Usage
+
+```dart auth_service.dart:69-73
+Future<void> logout() async {
+  _http.setToken(null);
+  await _storage.clearSession();
+  await _secureStorage.clearCredentials();
+}
+```
+
+---
+
+### hasValidToken
+
+Checks if a valid authentication token exists in storage.
+
+```dart
+Future<bool> hasValidToken() async
+```
+
+#### Returns
+
+<ResponseField name="bool" type="bool">
+  Returns `true` if a token exists in storage, `false` otherwise
+</ResponseField>
+
+#### Note
+
+Currently only checks for token existence. In a production environment, this could be enhanced to validate the token against a health check endpoint.
+
+#### Example Usage
+
+```dart
+if (await authService.hasValidToken()) {
+  // Navigate to home screen
+} else {
+  // Navigate to login screen
+}
+```
+
+---
+
+### refreshTokenIfNeeded
+
+Automatically refreshes the authentication token if it's close to expiration.
+
+```dart
+Future<bool> refreshTokenIfNeeded() async
+```
+
+#### Returns
+
+<ResponseField name="bool" type="bool">
+  Returns `true` if the token is still valid or was successfully refreshed, `false` otherwise
+</ResponseField>
+
+#### Behavior
+
+1. Prevents concurrent refresh attempts with `_isRefreshing` flag
+2. Checks if an active session exists
+3. Retrieves token data and checks expiration time
+4. If token expires within the configured refresh window:
+   - First attempts to refresh using stored credentials (if available)
+   - Falls back to calling the refresh-token endpoint
+5. On success:
+   - Updates the HTTP service with the new token
+   - Persists the new token and login data to storage
+
+#### Token Refresh Strategy
+
+The service uses two refresh strategies:
+
+1. **Credential-based refresh**: If username and password are stored securely, performs a fresh login
+2. **Token-based refresh**: Calls the `/refresh-token` endpoint with the current token
+
+#### Example Implementation
+
+```dart auth_service.dart:86-140
+Future<bool> refreshTokenIfNeeded() async {
+  if (_isRefreshing) return true;
+
+  try {
+    _isRefreshing = true;
+    final hasSession = await _storage.hasActiveSession();
+    if (!hasSession) return false;
+
+    final tokenData = await _storage.getTokenData();
+    if (tokenData == null) return false;
+
+    final expiresAt = tokenData.expiresAt;
+    final now = DateTime.now();
+
+    if (expiresAt.difference(now) > ApiConfig.refreshTokenBeforeExpiry) {
+      return true;
+    }
+
+    final saved = await _secureStorage.getCredentials();
+    final username = saved['username'];
+    final password = saved['password'];
+
+    if (username != null && password != null) {
+      final loginRequest = LoginRequest(username: username, password: password);
+      final loginResponse = await login(loginRequest);
+      return loginResponse.isSuccessful;
+    }
+
+    // Fallback to refresh-token endpoint
+    final response = await _http.post<LoginResponse>(
+      ApiEndpoints.refreshToken,
+      {'token': tokenData.token},
+      (json) => LoginResponse.fromJson(json),
+      suppressAuthHandling: true,
+    );
+
+    if (response.isSuccessful && response.content?.token != null) {
+      final newToken = response.content!.token!;
+      _http.setToken(newToken);
+      await _storage.setToken(newToken);
+      if (response.content != null) {
+        await _storage.setLoginData(response.content!.toJson());
+      }
+      return true;
+    }
+
+    return false;
+  } catch (_) {
+    return false;
+  } finally {
+    _isRefreshing = false;
+  }
+}
+```
+
+## Data Models
+
+### LoginRequest
+
+```dart
+class LoginRequest {
+  final String username;
+  final String password;
+}
+```
+
+### LoginResponse
+
+```dart
+class LoginResponse {
+  final String? token;
+  final String? personFirstName;
+  final String? personLastName;
+  final String? entityName;
+  final String? imageUrl;
+  final int? maxImagesPerPackage;
+}
+```
+
+## Related Services
+
+- [HttpService](/api/http-service) - Handles HTTP requests and response processing
+- [StorageService](/api/storage-service) - Manages persistent data storage
+
+## API Endpoints Used
+
+- `POST /login` - User authentication
+- `POST /refresh-token` - Token refresh

@@ -1,0 +1,255 @@
+---
+title: 'Authentication Models'
+description: 'Data models for authentication and login operations'
+icon: 'key'
+---
+
+## Overview
+
+The authentication models handle user login requests and responses. These models are located in `lib/features/auth/models/auth_models.dart` and are used throughout the app for managing user sessions.
+
+---
+
+## LoginRequest
+
+Request model for authenticating a user.
+
+### Fields
+
+<ParamField path="username" type="String" required>
+  The username for authentication
+</ParamField>
+
+<ParamField path="password" type="String" required>
+  The user's password
+</ParamField>
+
+### Constructor
+
+```dart
+const LoginRequest({
+  required this.username,
+  required this.password,
+});
+```
+
+### Methods
+
+#### toJson()
+
+Converts the login request to a JSON map for API transmission.
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Returns:** A map containing username and password fields.
+
+**Example:**
+
+```dart
+final request = LoginRequest(
+  username: 'user@example.com',
+  password: 'securePassword123',
+);
+
+final json = request.toJson();
+// Result: {'username': 'user@example.com', 'password': 'securePassword123'}
+```
+
+---
+
+## LoginResponse
+
+Response model containing user session information after successful authentication.
+
+<Note>
+  The backend wraps LoginResponse in a generic response wrapper with fields: `code`, `responseType`, `message`, `messageDetail`, and `content`. The `fromJson` factory method handles both the wrapped format and raw content.
+</Note>
+
+### Fields
+
+<ResponseField name="token" type="String?">
+  Authentication token for subsequent API requests
+</ResponseField>
+
+<ResponseField name="personFirstName" type="String?">
+  First name of the authenticated user
+</ResponseField>
+
+<ResponseField name="personLastName" type="String?">
+  Last name of the authenticated user
+</ResponseField>
+
+<ResponseField name="entityName" type="String?">
+  Name of the organization or entity the user belongs to
+</ResponseField>
+
+<ResponseField name="imageUrl" type="String?">
+  URL to the user's profile image
+</ResponseField>
+
+<ResponseField name="maxImagesPerPackage" type="int?">
+  Maximum number of images allowed per package for this user
+</ResponseField>
+
+### Constructors
+
+#### Default Constructor
+
+```dart
+const LoginResponse({
+  this.token,
+  this.personFirstName,
+  this.personLastName,
+  this.entityName,
+  this.imageUrl,
+  this.maxImagesPerPackage,
+});
+```
+
+#### empty()
+
+Creates an empty LoginResponse with all fields set to null.
+
+```dart
+factory LoginResponse.empty()
+```
+
+#### fromJson()
+
+Parses a LoginResponse from JSON. Accepts either the outer wrapper or raw content map.
+
+```dart
+factory LoginResponse.fromJson(Map<String, dynamic> json)
+```
+
+**Parameters:**
+- `json`: The JSON map from the API response
+
+**Example:**
+
+```dart
+// From wrapped response
+final response = LoginResponse.fromJson({
+  'code': 200,
+  'responseType': 'Success',
+  'content': {
+    'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    'personFirstName': 'John',
+    'personLastName': 'Doe',
+    'entityName': 'ACME Corp',
+    'maxImagesPerPackage': 10
+  }
+});
+
+// Or from raw content
+final response2 = LoginResponse.fromJson({
+  'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+  'personFirstName': 'John',
+  'personLastName': 'Doe',
+  'entityName': 'ACME Corp',
+  'maxImagesPerPackage': 10
+});
+```
+
+### Methods
+
+#### toJson()
+
+Converts the LoginResponse to a JSON map in the wrapped format.
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Returns:** A map with a `content` key containing all response fields.
+
+**Example:**
+
+```dart
+final response = LoginResponse(
+  token: 'abc123',
+  personFirstName: 'Jane',
+  personLastName: 'Smith',
+  entityName: 'Global Shipping',
+  maxImagesPerPackage: 5,
+);
+
+final json = response.toJson();
+// Result:
+// {
+//   'content': {
+//     'token': 'abc123',
+//     'personFirstName': 'Jane',
+//     'personLastName': 'Smith',
+//     'entityName': 'Global Shipping',
+//     'imageUrl': null,
+//     'maxImagesPerPackage': 5
+//   }
+// }
+```
+
+---
+
+## Usage Example
+
+<CodeGroup>
+
+```dart Complete Login Flow
+import 'package:logiscan/features/auth/models/auth_models.dart';
+import 'package:logiscan/core/services/http_service.dart';
+
+Future<LoginResponse> performLogin(String username, String password) async {
+  // Create login request
+  final request = LoginRequest(
+    username: username,
+    password: password,
+  );
+
+  // Send to API
+  final response = await httpService.post(
+    '/auth/login',
+    data: request.toJson(),
+  );
+
+  // Parse response
+  if (response.isSuccessful && response.content != null) {
+    return LoginResponse.fromJson(response.content);
+  }
+
+  return LoginResponse.empty();
+}
+```
+
+```dart Storing User Session
+final loginResponse = await performLogin('user@example.com', 'password');
+
+if (loginResponse.token != null) {
+  // Store token for future requests
+  await secureStorage.write(
+    key: 'auth_token',
+    value: loginResponse.token!,
+  );
+
+  // Display user information
+  print('Welcome ${loginResponse.personFirstName} ${loginResponse.personLastName}');
+  print('Organization: ${loginResponse.entityName}');
+  print('Max images per package: ${loginResponse.maxImagesPerPackage}');
+}
+```
+
+</CodeGroup>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="API Response" icon="reply" href="/api/api-response">
+    Learn about the generic API response wrapper
+  </Card>
+  <Card title="HTTP Service" icon="network-wired" href="/api/http-service">
+    Service for making authenticated API requests
+  </Card>
+</CardGroup>

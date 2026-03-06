@@ -1,0 +1,573 @@
+---
+title: 'Authentication'
+description: 'Secure user authentication with token-based session management'
+icon: 'shield-check'
+---
+
+## Overview
+
+LogiScan implements a robust authentication system with JWT token-based authentication, automatic session restoration, secure credential storage, and token refresh capabilities. The system is designed for enterprise environments with multiple user roles and permissions.
+
+## Authentication Flow
+
+<Steps>
+  <Step title="User Login">
+    User enters credentials (username and password)
+  </Step>
+  <Step title="Token Generation">
+    Server validates credentials and returns JWT token
+  </Step>
+  <Step title="Secure Storage">
+    Token and credentials stored securely on device
+  </Step>
+  <Step title="Session Restoration">
+    Automatic login on app restart if valid token exists
+  </Step>
+  <Step title="Auto-Refresh">
+    Token automatically refreshed before expiration
+  </Step>
+</Steps>
+
+## Core Components
+
+### AuthService
+
+The `AuthService` class handles all authentication operations:
+
+```dart
+class AuthService {
+  final HttpService _http;
+  final StorageService _storage;
+  final SecureCredentialsService _secureStorage;
+
+  AuthService(this._http, this._storage, this._secureStorage) {
+    _restoreToken();
+  }
+
+  Future<LoginResponse?> restoreSession() async {
+    final hasSession = await _storage.hasActiveSession();
+    final token = await _storage.getToken();
+    final loginData = await _storage.getLoginData();
+
+    if (hasSession && token != null) {
+      _http.setToken(token);
+      if (loginData != null) {
+        return LoginResponse.fromJson(loginData);
+      }
+    }
+    return null;
+  }
+
+  Future<ApiResponse<LoginResponse>> login(LoginRequest request) async {
+    try {
+      final response = await _http.post<LoginResponse>(
+        ApiEndpoints.login,
+        request.toJson(),
+        (json) => LoginResponse.fromJson(json),
+      );
+
+      if (response.isSuccessful && response.content?.token != null) {
+        final token = response.content!.token!;
+        final loginData = response.content!;
+        _http.setToken(token);
+        await _storage.setToken(token);
+        await _storage.setLoginData(loginData.toJson());
+      }
+
+      return response;
+    } catch (_) {
+      return ApiResponse.error(
+        messageDetail: null,
+        content: LoginResponse.empty(),
+      );
+    }
+  }
+
+  Future<void> logout() async {
+    _http.setToken(null);
+    await _storage.clearSession();
+    await _secureStorage.clearCredentials();
+  }
+}
+```
+
+**Location**: `lib/features/auth/services/auth_service.dart:9`
+
+### AuthProvider
+
+State management for authentication using Flutter's `ChangeNotifier`:
+
+```dart
+class AuthProvider extends ChangeNotifier {
+  final AuthService _authService;
+  final SecureCredentialsService _secureStorage = SecureCredentialsService();
+
+  bool _isLoading = false;
+  String? _error;
+  LoginResponse? _loginData;
+  bool _isAuthenticated = false;
+
+  AuthProvider(this._authService) {
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final loginData = await _authService.restoreSession();
+      if (loginData != null) {
+        _loginData = loginData;
+        _isAuthenticated = true;
+        notifyListeners();
+      } else {
+        final saved = await _secureStorage.getCredentials();
+        final username = saved['username'];
+        final password = saved['password'];
+        if (username != null && password != null) {
+          await login(username, password);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error restoring session: $e');
+      await logout();
+    }
+  }
+
+  Future<bool> login(String username, String password) async {
+    AppLogger.log('Attempting login', source: 'AuthProvider');
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      final request = LoginRequest(username: username, password: password);
+      final response = await _authService.login(request);
+
+      if (response.isSuccessful && response.content != null) {
+        _loginData = response.content;
+        _isAuthenticated = true;
+        _error = null;
+
+        await _secureStorage.saveCredentials(username, password);
+        AppLogger.log('Login successful', source: 'AuthProvider', type: 'SUCCESS');
+        return true;
+      } else {
+        _error = response.messageDetail ?? response.message;
+        AppLogger.error('Login failed', error: _error ?? 'No message', source: 'AuthProvider');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      _error = e.toString();
+      AppLogger.error('Login error', error: e, stackTrace: stackTrace, source: 'AuthProvider');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+}
+```
+
+**Location**: `lib/features/auth/providers/auth_provider.dart:8`
+
+## Token Management
+
+### JWT Token Structure
+
+LogiScan uses Bearer token authentication:
+
+```dart
+void setToken(String? token) {
+  if (token == null || token.trim().isEmpty) {
+    _token = null;
+    AppLogger.log('Token cleared', source: 'HttpService');
+    return;
+  }
+
+  _token = token.startsWith('Bearer ') ? token : 'Bearer $token';
+  AppLogger.log('Token set', source: 'HttpService', type: 'AUTH');
+  _isHandlingExpiredSession = false;
+}
+```
+
+**Location**: `lib/core/services/http_service.dart:39`
+
+### Automatic Token Refresh
+
+Tokens are automatically refreshed before expiration:
+
+```dart
+Future<bool> refreshTokenIfNeeded() async {
+  if (_isRefreshing) return true;
+
+  try {
+    _isRefreshing = true;
+    final hasSession = await _storage.hasActiveSession();
+    if (!hasSession) return false;
+
+    final tokenData = await _storage.getTokenData();
+    if (tokenData == null) return false;
+
+    final expiresAt = tokenData.expiresAt;
+    final now = DateTime.now();
+
+    if (expiresAt.difference(now) > ApiConfig.refreshTokenBeforeExpiry) {
+      return true;
+    }
+
+    final saved = await _secureStorage.getCredentials();
+    final username = saved['username'];
+    final password = saved['password'];
+
+    if (username != null && password != null) {
+      final loginRequest = LoginRequest(username: username, password: password);
+      final loginResponse = await login(loginRequest);
+      return loginResponse.isSuccessful;
+    }
+
+    // If no saved credentials, try classic refresh-token
+    final response = await _http.post<LoginResponse>(
+      ApiEndpoints.refreshToken,
+      {'token': tokenData.token},
+      (json) => LoginResponse.fromJson(json),
+      suppressAuthHandling: true,
+    );
+
+    if (response.isSuccessful && response.content?.token != null) {
+      final newToken = response.content!.token!;
+      _http.setToken(newToken);
+      await _storage.setToken(newToken);
+      if (response.content != null) {
+        await _storage.setLoginData(response.content!.toJson());
+      }
+      return true;
+    }
+
+    return false;
+  } catch (_) {
+    return false;
+  } finally {
+    _isRefreshing = false;
+  }
+}
+```
+
+**Location**: `lib/features/auth/services/auth_service.dart:86`
+
+### Token Configuration
+
+```dart
+class ApiConfig {
+  /// Time before expiration to refresh the token (30 minutes)
+  static const refreshTokenBeforeExpiry = Duration(minutes: 30);
+
+  /// Interval to verify token state (15 minutes)
+  static const tokenCheckInterval = Duration(minutes: 15);
+}
+```
+
+**Location**: `lib/core/config/api_config.dart:4`
+
+## Data Models
+
+### LoginRequest
+
+```dart
+class LoginRequest {
+  final String username;
+  final String password;
+
+  const LoginRequest({
+    required this.username,
+    required this.password,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'username': username,
+    'password': password,
+  };
+}
+```
+
+### LoginResponse
+
+```dart
+class LoginResponse {
+  final String? token;
+  final String? personFirstName;
+  final String? personLastName;
+  final String? entityName;
+  final String? imageUrl;
+  final int? maxImagesPerPackage;
+
+  const LoginResponse({
+    this.token,
+    this.personFirstName,
+    this.personLastName,
+    this.entityName,
+    this.imageUrl,
+    this.maxImagesPerPackage,
+  });
+
+  factory LoginResponse.fromJson(Map<String, dynamic> json) {
+    final content = json['content'] as Map<String, dynamic>? ?? json;
+
+    return LoginResponse(
+      token: content['token'] as String?,
+      personFirstName: content['personFirstName'] as String?,
+      personLastName: content['personLastName'] as String?,
+      entityName: content['entityName'] as String?,
+      imageUrl: content['imageUrl'] as String?,
+      maxImagesPerPackage:
+          (content['maxImagesPerPackage'] as num?)?.toInt(),
+    );
+  }
+}
+```
+
+**Location**: `lib/features/auth/models/auth_models.dart`
+
+## Secure Storage
+
+LogiScan uses two storage mechanisms:
+
+### SecureCredentialsService
+
+For sensitive data (credentials):
+
+```dart
+class SecureCredentialsService {
+  Future<void> saveCredentials(String username, String password) async {
+    // Stored in platform secure storage (Keychain/KeyStore)
+  }
+
+  Future<Map<String, String?>> getCredentials() async {
+    // Retrieved from secure storage
+  }
+
+  Future<void> clearCredentials() async {
+    // Securely deleted
+  }
+}
+```
+
+### StorageService
+
+For non-sensitive session data:
+
+```dart
+class StorageService {
+  Future<bool> hasActiveSession() async { /* ... */ }
+  Future<String?> getToken() async { /* ... */ }
+  Future<void> setToken(String token) async { /* ... */ }
+  Future<Map<String, dynamic>?> getLoginData() async { /* ... */ }
+  Future<void> setLoginData(Map<String, dynamic> data) async { /* ... */ }
+  Future<void> clearSession() async { /* ... */ }
+}
+```
+
+<Note>
+  Credentials are stored in the device's secure enclave (iOS Keychain / Android KeyStore) and are never logged or transmitted in plaintext after initial authentication.
+</Note>
+
+## Session Management
+
+### Session Expiration Handling
+
+```dart
+Future<void> _handleSessionExpired({
+  bool suppressAuthHandling = false,
+  String? messageDetail,
+}) async {
+  if (suppressAuthHandling) {
+    AppLogger.log('Skipping session expired handling', source: 'HttpService');
+    return;
+  }
+  if (_isHandlingExpiredSession) {
+    AppLogger.log('Session expired already handled', source: 'HttpService');
+    return;
+  }
+
+  _isHandlingExpiredSession = true;
+  try {
+    _token = null;
+    if (onSessionExpired != null) {
+      AppLogger.log('Calling onSessionExpired callback', source: 'HttpService');
+      await Future(() => onSessionExpired!());
+    }
+  } finally {
+    _isHandlingExpiredSession = false;
+  }
+}
+```
+
+**Location**: `lib/core/services/http_service.dart:91`
+
+### 401 Unauthorized Response
+
+When a 401 response is received:
+
+1. Attempt automatic token refresh
+2. Retry the original request with new token
+3. If refresh fails, trigger session expiration
+4. Navigate user to login screen
+
+```dart
+if (response.statusCode == 401) {
+  if (!_isHandlingExpiredSession && !suppressAuthHandling) {
+    final refreshed = await _attemptTokenRefresh();
+    if (refreshed) {
+      return await get<T>(
+        path,
+        fromJson,
+        queryParams: queryParams,
+        suppressAuthHandling: true,
+      );
+    }
+  }
+
+  await _handleSessionExpired(
+    suppressAuthHandling: suppressAuthHandling,
+    messageDetail: refreshedMessageDetail,
+  );
+}
+```
+
+**Location**: `lib/core/services/http_service.dart:149`
+
+## User Profile Data
+
+After successful authentication, user profile data is available:
+
+```dart
+final auth = context.watch<AuthProvider>();
+final user = auth.loginData;
+
+final fullName = '${user?.personFirstName ?? ''} ${user?.personLastName ?? ''}'.trim();
+final entityName = user?.entityName ?? 'No company specified';
+final imageUrl = user?.imageUrl;
+final maxImages = user?.maxImagesPerPackage ?? 5;
+```
+
+**Location**: `lib/features/auth/presentation/pages/home_page.dart:16`
+
+## API Endpoints
+
+### Login
+
+**Endpoint**: `POST /api/mobile/v1.0/Auth/login`
+
+**Request**:
+```json
+{
+  "username": "user@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+**Response**:
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "content": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "personFirstName": "John",
+    "personLastName": "Doe",
+    "entityName": "ACME Logistics",
+    "imageUrl": "https://example.com/avatar.jpg",
+    "maxImagesPerPackage": 5
+  }
+}
+```
+
+### Refresh Token
+
+**Endpoint**: `POST /api/mobile/v1.0/Auth/refresh-token`
+
+**Request**:
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response**:
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "content": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "personFirstName": "John",
+    "personLastName": "Doe",
+    "entityName": "ACME Logistics"
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Secure Password Handling">
+    - Never store passwords in plaintext
+    - Use platform secure storage (Keychain/KeyStore)
+    - Clear sensitive data on logout
+    - Implement password policies on backend
+  </Accordion>
+  
+  <Accordion title="Token Lifecycle">
+    - Refresh tokens before expiration (30 min buffer)
+    - Handle 401 responses gracefully
+    - Clear tokens on explicit logout
+    - Validate token on app startup
+  </Accordion>
+  
+  <Accordion title="Session Restoration">
+    - Always attempt session restoration on app start
+    - Fall back to saved credentials if token expired
+    - Handle edge cases (network errors, invalid tokens)
+    - Provide clear feedback to users
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+  Always use HTTPS for authentication endpoints in production. The current implementation switches between development and production URLs based on configuration.
+</Warning>
+
+### Production Configuration
+
+```dart
+class ApiConfig {
+  static const String devBaseUrl = 'http://100.104.120.121:82';
+  static const String prodBaseUrl = 'https://beehive.gbilogistics.net';
+  static const bool isDevelopment = false;
+  
+  static String get baseUrl => isDevelopment ? devBaseUrl : prodBaseUrl;
+}
+```
+
+**Location**: `lib/core/config/api_config.dart:9`
+
+## Error Handling
+
+Common authentication errors and their handling:
+
+| Error Code | Meaning | Handling |
+|------------|---------|----------|
+| 401 | Unauthorized | Attempt token refresh, then logout |
+| 403 | Forbidden | Show permission error, redirect to home |
+| 503 | Service Unavailable | Show retry message |
+| Network Error | Connection failed | Show offline message |
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Package Scanning" icon="barcode" href="/features/scanning">
+    Scan packages after authentication
+  </Card>
+  <Card title="Package Tracking" icon="route" href="/features/package-tracking">
+    Track packages with authenticated session
+  </Card>
+</CardGroup>

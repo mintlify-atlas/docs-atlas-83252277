@@ -1,0 +1,688 @@
+---
+title: Error Handling
+description: Understanding error handling patterns and debugging in LogiScan
+---
+
+## Overview
+
+LogiScan implements a comprehensive error handling system that provides clear error messages to users while capturing detailed diagnostic information for developers. The system uses standardized error codes, structured error models, and centralized logging.
+
+## Error Architecture
+
+The error handling system consists of three main components:
+
+1. **ApiError** - Structured error model with error codes
+2. **ApiResponse** - Generic wrapper for API responses
+3. **AppLogger** - Centralized logging utility
+
+## ApiError Model
+
+The `ApiError` class represents structured errors from the API:
+
+```dart lib/core/models/api_error.dart
+@immutable
+class ApiError implements Exception {
+  final int code;
+  final String message;
+  final Map<String, dynamic>? details;
+
+  const ApiError({
+    required this.code,
+    required this.message,
+    this.details,
+  });
+
+  factory ApiError.fromJson(Map<String, dynamic> json) {
+    return ApiError(
+      code: json['code'] as int,
+      message: json['message'] as String? ?? 'Error desconocido',
+      details: json['details'] as Map<String, dynamic>?,
+    );
+  }
+
+  // Convenience constructors
+  factory ApiError.serverError([String? message]) {
+    return ApiError(
+      code: ApiErrorCode.serverError,
+      message: message ?? '',
+    );
+  }
+
+  factory ApiError.networkError([String? message]) {
+    return ApiError(
+      code: ApiErrorCode.serviceUnavailable,
+      message: message ?? '',
+    );
+  }
+
+  factory ApiError.sessionExpired([String? message]) {
+    return ApiError(
+      code: ApiErrorCode.sessionExpired,
+      message: message ?? '',
+    );
+  }
+
+  // Error classification helpers
+  bool get isAuthError => code >= 1 && code < 10;
+  bool get isValidationError => code >= 100 && code < 200;
+  bool get isBusinessError => code >= 200 && code < 500;
+  bool get isServerError => code >= 500;
+
+  // User-facing message
+  String get userMessage => message;
+
+  // Retry logic
+  bool get isRetryable => isServerError || code == ApiErrorCode.serviceUnavailable;
+
+  // Logout requirement
+  bool get requiresLogout =>
+      code == ApiErrorCode.sessionExpired || code == ApiErrorCode.invalidToken;
+
+  @override
+  String toString() =>
+      'ApiError($code): $message${details != null ? ' - $details' : ''}';
+}
+```
+
+## Error Codes
+
+LogiScan uses standardized error codes organized by category:
+
+### Authentication Errors (1-99)
+
+```dart lib/core/models/api_error.dart
+class ApiErrorCode {
+  // Errores de autenticación (1-99)
+  static const int sessionExpired = 1;
+  static const int invalidToken = 2;
+  static const int invalidCredentials = 3;
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 1 | `sessionExpired` | User session has expired |
+| 2 | `invalidToken` | Authentication token is invalid |
+| 3 | `invalidCredentials` | Invalid username or password |
+
+### State Errors (60-69)
+
+```dart lib/core/models/api_error.dart
+  // Errores de estados (60-69)
+  static const int invalidStateForOperation = 60;
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 60 | `invalidStateForOperation` | Operation not allowed in current state |
+
+### Validation Errors (100-199)
+
+```dart lib/core/models/api_error.dart
+  // Errores de validación (100-199)
+  static const int invalidInput = 100;
+  static const int invalidState = 101;
+  static const int duplicateEntry = 102;
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 100 | `invalidInput` | Input validation failed |
+| 101 | `invalidState` | Invalid state for operation |
+| 102 | `duplicateEntry` | Duplicate entry detected |
+
+### Business Errors (200-299)
+
+```dart lib/core/models/api_error.dart
+  // Errores de negocio (200-299)
+  static const int guideNotFound = 200;
+  static const int invalidGuideState = 201;
+  static const int cubeNotFound = 202;
+  static const int invalidCubeState = 203;
+  static const int invalidOperation = 204;
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 200 | `guideNotFound` | Guide/shipment not found |
+| 201 | `invalidGuideState` | Guide in invalid state |
+| 202 | `cubeNotFound` | Package/cube not found |
+| 203 | `invalidCubeState` | Package in invalid state |
+| 204 | `invalidOperation` | Operation not allowed |
+
+### Network Errors (400-499)
+
+```dart lib/core/models/api_error.dart
+  // Errores de red (400-499)
+  static const int networkError = 400;
+  static const int timeout = 408;
+  static const int unknown = 499;
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 400 | `networkError` | Network connectivity issue |
+| 408 | `timeout` | Request timeout |
+| 499 | `unknown` | Unknown error |
+
+### Server Errors (500+)
+
+```dart lib/core/models/api_error.dart
+  // Errores de servidor (500+)
+  static const int serverError = 500;
+  static const int serviceUnavailable = 503;
+}
+```
+
+| Code | Constant | Description |
+|------|----------|-------------|
+| 500 | `serverError` | Internal server error |
+| 503 | `serviceUnavailable` | Service temporarily unavailable |
+
+## ApiResponse Model
+
+The `ApiResponse` class wraps all API responses with success/error states:
+
+```dart lib/core/models/api_response.dart
+class ApiResponse<T> {
+  final bool isSuccessful;
+  final String? message;        // Mensaje de éxito
+  final String? messageDetail;  // Mensaje de error detallado
+  final T? content;
+
+  const ApiResponse({
+    required this.isSuccessful,
+    this.message,
+    this.messageDetail,
+    this.content,
+  });
+
+  factory ApiResponse.error({
+    String? messageDetail,
+    T? content,
+  }) {
+    return ApiResponse(
+      isSuccessful: false,
+      messageDetail: messageDetail,
+      content: content,
+    );
+  }
+
+  factory ApiResponse.success({
+    String? message,
+    T? content,
+  }) {
+    return ApiResponse(
+      isSuccessful: true,
+      message: message,
+      content: content,
+    );
+  }
+
+  String? get displayMessage => isSuccessful ? message : messageDetail;
+}
+```
+
+### Usage Pattern
+
+```dart
+Future<ApiResponse<LoginResponse>> login(LoginRequest request) async {
+  try {
+    final response = await _httpService.post(
+      ApiEndpoints.login,
+      request.toJson(),
+      (json) => LoginResponse.fromJson(json),
+    );
+    
+    if (response.isSuccessful) {
+      return ApiResponse.success(
+        message: 'Login successful',
+        content: response.content,
+      );
+    } else {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+      );
+    }
+  } catch (e) {
+    return ApiResponse.error(
+      messageDetail: e.toString(),
+    );
+  }
+}
+```
+
+## HTTP Service Error Handling
+
+The `HttpService` class handles errors at the network level:
+
+### Session Expiration Handling
+
+```dart lib/core/services/http_service.dart
+// Automatic token refresh on 401
+if (response.statusCode == 401) {
+  if (!_isHandlingExpiredSession && !suppressAuthHandling) {
+    final refreshed = await _attemptTokenRefresh();
+    if (refreshed) {
+      // Retry request with new token
+      return await get<T>(
+        path,
+        fromJson,
+        queryParams: queryParams,
+        suppressAuthHandling: true,
+      );
+    }
+  }
+  
+  await _handleSessionExpired(
+    suppressAuthHandling: suppressAuthHandling,
+    messageDetail: refreshedMessageDetail,
+  );
+  
+  return ApiResponse.error(
+    messageDetail: refreshedMessageDetail ??
+        'Su sesión ha finalizado, por favor ingrese de nuevo',
+  );
+}
+```
+
+### Server Error Handling
+
+```dart lib/core/services/http_service.dart
+if (response.statusCode == 503 || response.statusCode == 501) {
+  return ApiResponse.error(
+    messageDetail: 'Ocurrió un error en el servidor',
+    content: null,
+  );
+}
+```
+
+### Network Error Handling
+
+```dart lib/core/services/http_service.dart
+try {
+  final response = await client.get(uri, headers: _headers)
+      .timeout(const Duration(seconds: 30));
+  // Process response...
+} catch (e) {
+  AppLogger.error('Error en GET request', error: e, source: 'HttpService');
+  final error = ApiError(
+    code: e is TimeoutException
+        ? ApiErrorCode.timeout
+        : ApiErrorCode.networkError,
+    message: e.toString(),
+  );
+  return ApiResponse.error(messageDetail: error.userMessage);
+}
+```
+
+## AppLogger
+
+Centralized logging utility for debugging and diagnostics:
+
+```dart lib/core/services/app_logger.dart
+class AppLogger {
+  static void log(
+    String message, {
+    String? source,
+    Object? error,
+    StackTrace? stackTrace,
+    String type = 'INFO',
+  }) {
+    final logMessage = '''
+----------------------------------------
+[$type] ${source != null ? '[$source]' : ''}: $message
+${error != null ? '\nError: $error' : ''}
+${stackTrace != null ? '\nStack: \n$stackTrace' : ''}
+----------------------------------------''';
+
+    debugPrint(logMessage);
+  }
+
+  static void apiCall(String endpoint, {String? method, String? body}) {
+    log(
+      'API Call: ${method ?? 'GET'} $endpoint${body != null ? '\nBody: $body' : ''}',
+      source: 'API',
+    );
+  }
+
+  static void apiResponse(String endpoint, {int? statusCode, String? body}) {
+    log(
+      'API Response: $endpoint\nStatus: ${statusCode ?? 'Unknown'}\nBody: ${body ?? 'No body'}',
+      source: 'API',
+    );
+  }
+
+  static void error(String message, {Object? error, StackTrace? stackTrace, String? source}) {
+    log(
+      message,
+      error: error,
+      stackTrace: stackTrace,
+      source: source,
+      type: 'ERROR',
+    );
+  }
+}
+```
+
+### Usage Examples
+
+<CodeGroup>
+```dart General Logging
+AppLogger.log('User logged in', source: 'AuthProvider');
+```
+
+```dart Error Logging
+AppLogger.error(
+  'Failed to fetch data',
+  error: error,
+  stackTrace: stackTrace,
+  source: 'MeasurementService',
+);
+```
+
+```dart API Call Logging
+AppLogger.apiCall(
+  '/api/mobile/v1.0/Auth/login',
+  method: 'POST',
+  body: jsonEncode(request.toJson()),
+);
+```
+
+```dart API Response Logging
+AppLogger.apiResponse(
+  '/api/mobile/v1.0/Auth/login',
+  statusCode: response.statusCode,
+  body: response.body,
+);
+```
+</CodeGroup>
+
+## Firebase Crashlytics
+
+LogiScan integrates Firebase Crashlytics for production error reporting:
+
+### Configuration
+
+Set up in `lib/main.dart`:
+
+```dart lib/main.dart
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Pass all uncaught "fatal" errors from the framework to Crashlytics
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  
+  // Pass all uncaught asynchronous errors to Crashlytics
+  PlatformDispatcher.instance.onError = (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    return true;
+  };
+  
+  await VersionService.instance.initialize();
+  runApp(const LogiScanApp());
+}
+```
+
+### Manual Error Reporting
+
+You can manually report errors to Crashlytics:
+
+```dart
+try {
+  // Your code
+} catch (error, stackTrace) {
+  // Log locally
+  AppLogger.error('Critical error', error: error, stackTrace: stackTrace);
+  
+  // Report to Crashlytics
+  await FirebaseCrashlytics.instance.recordError(
+    error,
+    stackTrace,
+    reason: 'Failed to process package',
+    fatal: false,
+  );
+}
+```
+
+### Custom Keys
+
+Add context to crash reports:
+
+```dart
+await FirebaseCrashlytics.instance.setCustomKey('user_id', userId);
+await FirebaseCrashlytics.instance.setCustomKey('package_id', packageId);
+```
+
+## User Feedback
+
+Display user-friendly error messages using `MessageHelper`:
+
+```dart lib/core/presentation/message_helper.dart
+class MessageHelper {
+  static void showIconSnackBar(
+    BuildContext context, {
+    required String? message,
+    bool isSuccess = true,
+    bool isWarning = false,
+  }) {
+    if (message == null || message.isEmpty) return;
+
+    final Color color;
+    final IconData icon;
+    if (isWarning) {
+      color = Colors.orange;
+      icon = Icons.warning_amber_rounded;
+    } else if (isSuccess) {
+      color = Colors.green;
+      icon = Icons.check_circle_outline;
+    } else {
+      color = Colors.red;
+      icon = Icons.error_outline;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: color,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          duration: Duration(seconds: isSuccess ? 3 : 4),
+          content: Row(
+            children: [
+              Icon(icon, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  message,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+}
+```
+
+### Usage in Providers
+
+```dart lib/features/auth/providers/auth_provider.dart
+Future<bool> login(String username, String password) async {
+  try {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    final request = LoginRequest(username: username, password: password);
+    final response = await _authService.login(request);
+
+    if (response.isSuccessful && response.content != null) {
+      _loginData = response.content;
+      _isAuthenticated = true;
+      _error = null;
+      AppLogger.log('Login successful', source: 'AuthProvider', type: 'SUCCESS');
+      return true;
+    } else {
+      // Backend error message
+      _error = response.messageDetail ?? response.message;
+      AppLogger.error('Login failed', error: _error ?? 'No message', source: 'AuthProvider');
+      return false;
+    }
+  } catch (e, stackTrace) {
+    _error = e.toString();
+    AppLogger.error('Login error', error: e, stackTrace: stackTrace, source: 'AuthProvider');
+    return false;
+  } finally {
+    _isLoading = false;
+    notifyListeners();
+  }
+}
+```
+
+### Display Errors in UI
+
+```dart
+Consumer<AuthProvider>(
+  builder: (context, authProvider, _) {
+    if (authProvider.error != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        MessageHelper.showIconSnackBar(
+          context,
+          message: authProvider.error,
+          isSuccess: false,
+        );
+        authProvider.clearError();
+      });
+    }
+    
+    return YourWidget();
+  },
+)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always handle errors gracefully">
+    Never let errors crash the app. Use try-catch blocks:
+    
+    ```dart
+    try {
+      await performOperation();
+    } catch (e, stackTrace) {
+      AppLogger.error('Operation failed', error: e, stackTrace: stackTrace);
+      // Show user-friendly message
+      MessageHelper.showIconSnackBar(context, message: 'Operation failed', isSuccess: false);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Provide user-friendly messages">
+    Translate technical errors into user-understandable messages:
+    
+    ```dart
+    String getUserMessage(ApiError error) {
+      if (error.isAuthError) return 'Please log in again';
+      if (error.isNetworkError) return 'Check your internet connection';
+      if (error.isServerError) return 'Service temporarily unavailable';
+      return error.message;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Log errors with context">
+    Include relevant information in logs:
+    
+    ```dart
+    AppLogger.error(
+      'Failed to upload image',
+      error: error,
+      stackTrace: stackTrace,
+      source: 'ImageUploadService',
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="Don't expose sensitive data">
+    Sanitize error messages before displaying to users:
+    
+    ```dart
+    // Don't show: "Database connection failed: host=192.168.1.1 user=admin"
+    // Show: "Connection error. Please try again."
+    ```
+  </Accordion>
+
+  <Accordion title="Implement retry logic">
+    For retryable errors, offer users a retry option:
+    
+    ```dart
+    if (error.isRetryable) {
+      MessageHelper.showIconSnackBar(
+        context,
+        message: 'Request failed. Tap to retry.',
+        isWarning: true,
+      );
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tips
+
+### Enable Verbose Logging
+
+Modify `AppLogger` for more detailed logs:
+
+```dart
+static void log(String message, {...}) {
+  final logMessage = '''[$type] [$source] $message
+Timestamp: ${DateTime.now()}
+Error: $error
+Stack: $stackTrace''';
+  debugPrint(logMessage);
+}
+```
+
+### Use Flutter DevTools
+
+Access DevTools for:
+- Network inspector (view API calls)
+- Logging view (filter by severity)
+- Widget inspector (debug UI issues)
+- Performance profiler
+
+### Check Firebase Console
+
+Monitor crashes in Firebase Console:
+1. Go to Crashlytics dashboard
+2. View crash-free users percentage
+3. Analyze crash reports with stack traces
+4. Filter by app version and platform
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup" icon="gear" href="/development/setup">
+    Set up your development environment
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/development/project-structure">
+    Understand the codebase
+  </Card>
+  <Card title="Theming" icon="palette" href="/development/theming">
+    Customize the app's appearance
+  </Card>
+  <Card title="API Configuration" icon="gear" href="/architecture/api-integration">
+    Configure API endpoints
+  </Card>
+</CardGroup>

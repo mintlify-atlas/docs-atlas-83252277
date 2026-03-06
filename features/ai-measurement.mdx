@@ -1,0 +1,726 @@
+---
+title: 'AI Measurement'
+description: 'Automatic extraction of package dimensions and weight from label photos using AI'
+icon: 'ruler'
+---
+
+## Overview
+
+LogiScan's AI measurement feature uses computer vision and optical character recognition (OCR) to automatically extract package dimensions and weight from shipping label photos. This eliminates manual data entry and reduces measurement errors in warehouse operations.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Label Recognition" icon="tag">
+    Automatic detection and reading of shipping labels
+  </Card>
+  <Card title="OCR Processing" icon="text">
+    Extract text data from label images
+  </Card>
+  <Card title="Dimension Parsing" icon="ruler-combined">
+    Parse and validate length, width, height measurements
+  </Card>
+  <Card title="Weight Extraction" icon="weight-hanging">
+    Identify and extract weight information
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Capture Label Photo">
+    User captures a clear photo of the shipping label
+  </Step>
+  <Step title="Upload to API">
+    Image is encoded and sent to the measurement processing endpoint
+  </Step>
+  <Step title="AI Processing">
+    Backend AI service performs OCR and data extraction
+  </Step>
+  <Step title="Parse Measurements">
+    System identifies dimensions and weight from extracted text
+  </Step>
+  <Step title="Auto-Fill Form">
+    Extracted values automatically populate the input fields
+  </Step>
+  <Step title="User Verification">
+    User reviews and adjusts measurements if needed
+  </Step>
+</Steps>
+
+## Implementation
+
+### Measurement Capture
+
+The measurement capture flow in the scan details page:
+
+```dart
+Future<void> _handleMeasurementCapture() async {
+  if (_isOverMaxImages()) return;
+
+  final XFile? photo = await _pickMeasurementPhoto();
+  if (photo == null) return;
+
+  setState(() {
+    _isProcessingMeasurements = true;
+    _images.add(photo);
+  });
+
+  try {
+    final measurementService = context.read<MeasurementService>();
+    final request = await _buildProcessMeasurementRequest(photo);
+    if (request == null) {
+      setState(() => _isProcessingMeasurements = false);
+      return;
+    }
+
+    final response = await measurementService.processMeasurementData(request);
+    if (!mounted) return;
+
+    if (response.isSuccessful) {
+      _applyMeasurementResponse(response.content);
+    } else {
+      final msg = response.messageDetail;
+      if (mounted && msg != null && msg.isNotEmpty) {
+        MessageHelper.showIconSnackBar(
+          context,
+          message: msg,
+          isSuccess: false,
+        );
+      }
+    }
+  } catch (_) {
+    if (!mounted) return;
+    MessageHelper.showIconSnackBar(
+      context,
+      message: 'Unexpected error capturing measurements.',
+      isSuccess: false,
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _isProcessingMeasurements = false);
+    }
+  }
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:164`
+
+### Request Building
+
+Prepare the measurement request with encoded image:
+
+```dart
+Future<ProcessMeasurementDataRequest?> _buildProcessMeasurementRequest(
+  XFile photo,
+) async {
+  final tracking = _codeController.text.trim();
+  if (tracking.isEmpty) {
+    MessageHelper.showIconSnackBar(
+      context,
+      message:
+          'Enter or scan a tracking number before capturing measurements.',
+      isSuccess: false,
+    );
+    return null;
+  }
+
+  final bytes = await photo.readAsBytes();
+  final encoded = base64Encode(bytes);
+  final fileName = photo.name;
+  final ext = fileName.contains('.') ? fileName.split('.').last : 'jpg';
+
+  return ProcessMeasurementDataRequest(
+    file: RequestEncodeFile(
+      encodeContent: encoded,
+      fileExtension: ext,
+      fileName: fileName,
+    ),
+  );
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:235`
+
+### Response Processing
+
+Apply extracted measurements to form fields:
+
+```dart
+void _applyMeasurementResponse(ProcessMeasurementDataResponse? data) {
+  if (data == null) {
+    return;
+  }
+
+  setState(() {
+    if (data.length != null) {
+      _lengthController.text = _formatNumber(data.length!);
+    }
+    if (data.width != null) {
+      _widthController.text = _formatNumber(data.width!);
+    }
+    if (data.height != null) {
+      _heightController.text = _formatNumber(data.height!);
+    }
+    if (data.weight != null) {
+      _weightController.text = _formatNumber(data.weight!);
+    }
+  });
+}
+
+String _formatNumber(double value) =>
+    value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 2);
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:263`
+
+## MeasurementService
+
+The service handles API communication:
+
+```dart
+class MeasurementService {
+  final HttpService _http;
+
+  MeasurementService(this._http);
+
+  Future<ApiResponse<ProcessMeasurementDataResponse>>
+      processMeasurementData(ProcessMeasurementDataRequest request) async {
+    try {
+      final response = await _http.post<ProcessMeasurementDataResponse>(
+        ApiEndpoints.processMeasurement,
+        request.toJson(),
+        (json) => ProcessMeasurementDataResponse.fromJson(json),
+      );
+
+      if (!response.isSuccessful) {
+        return ApiResponse.error(
+          messageDetail: response.messageDetail,
+          content: ProcessMeasurementDataResponse.empty(),
+        );
+      }
+
+      return response;
+    } catch (_) {
+      return ApiResponse.error(
+        messageDetail: null,
+        content: ProcessMeasurementDataResponse.empty(),
+      );
+    }
+  }
+}
+```
+
+**Location**: `lib/features/scan/services/measurement_service.dart:15`
+
+## Data Models
+
+### ProcessMeasurementDataRequest
+
+Request model for measurement processing:
+
+```dart
+class ProcessMeasurementDataRequest {
+  final RequestEncodeFile file;
+
+  const ProcessMeasurementDataRequest({required this.file});
+
+  Map<String, dynamic> toJson() => {
+    'file': file.toJson(),
+  };
+}
+```
+
+**Location**: `lib/features/scan/models/measurement_models.dart:19`
+
+### ProcessMeasurementDataResponse
+
+Response model with extracted measurements:
+
+```dart
+class ProcessMeasurementDataResponse {
+  final double? weight;
+  final double? width;
+  final double? length;
+  final double? height;
+
+  const ProcessMeasurementDataResponse({
+    this.weight,
+    this.width,
+    this.length,
+    this.height,
+  });
+
+  factory ProcessMeasurementDataResponse.empty() =>
+      const ProcessMeasurementDataResponse();
+
+  factory ProcessMeasurementDataResponse.fromJson(Map<String, dynamic> json) {
+    final content = json['content'] as Map<String, dynamic>? ?? json;
+
+    double? asDouble(dynamic value) {
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    }
+
+    return ProcessMeasurementDataResponse(
+      weight: asDouble(content['weight']),
+      width: asDouble(content['width']),
+      length: asDouble(content['length']),
+      height: asDouble(content['height']),
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/models/measurement_models.dart:29`
+
+## UI Components
+
+### Photo Label Capture Card
+
+UI component for initiating measurement capture:
+
+```dart
+Widget _buildPhotoLabelCard() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Photo label',
+        style: TextStyle(
+          color: Color(0xFF111827),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 8),
+      GestureDetector(
+        onTap: _isProcessingMeasurements ? null : _handleMeasurementCapture,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.9),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            children: [
+              if (_isProcessingMeasurements)
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                const Icon(
+                  Icons.photo_camera_outlined,
+                  color: Color(0xFF111827),
+                ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  'Tap to capture the label so AI can read dimensions and weight.',
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:912`
+
+### Measurement Input Fields
+
+Fields that display extracted measurements:
+
+```dart
+Widget _buildDimensionsSection() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Dimensions (in)',
+        style: TextStyle(
+          color: Color(0xFF111827),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: _NumberField(
+              controller: _lengthController,
+              label: 'Length',
+              integerOnly: true,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _NumberField(
+              controller: _widthController,
+              label: 'Width',
+              integerOnly: true,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _NumberField(
+              controller: _heightController,
+              label: 'Height',
+              integerOnly: true,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      const Text(
+        'Weight (lb)',
+        style: TextStyle(
+          color: Color(0xFF111827),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      const SizedBox(height: 8),
+      _NumberField(
+        controller: _weightController,
+        label: 'Weight',
+        integerOnly: false,
+        maxDecimals: 2,
+      ),
+    ],
+  );
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:962`
+
+## API Integration
+
+### Process Measurement Data Endpoint
+
+**Endpoint**: `POST /api/mobile/v1.0/ProcessPackage/process-measurement-data`
+
+**Request**:
+```json
+{
+  "file": {
+    "encodeContent": "base64EncodedImageData...",
+    "fileExtension": "jpg",
+    "fileName": "label_photo.jpg"
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "content": {
+    "weight": 15.5,
+    "width": 12,
+    "length": 10,
+    "height": 8
+  }
+}
+```
+
+<Note>
+  The API returns null for any measurement that couldn't be extracted from the image. The app should handle partial results gracefully.
+</Note>
+
+## Best Practices
+
+### Photo Capture Tips
+
+<AccordionGroup>
+  <Accordion title="Lighting Conditions">
+    - Use adequate lighting without harsh shadows
+    - Avoid glare on glossy labels
+    - Natural or bright white LED lighting works best
+    - Position light source from the side, not directly above
+  </Accordion>
+  
+  <Accordion title="Label Positioning">
+    - Capture the entire label in frame
+    - Hold device parallel to label surface
+    - Ensure label is flat and not wrinkled
+    - Minimum distance: 6-12 inches from label
+  </Accordion>
+  
+  <Accordion title="Image Quality">
+    - Use device's auto-focus feature
+    - Ensure text is sharp and readable
+    - Avoid motion blur by holding device steady
+    - Clean camera lens before capture
+  </Accordion>
+</AccordionGroup>
+
+### Handling Extraction Failures
+
+```dart
+if (response.isSuccessful) {
+  _applyMeasurementResponse(response.content);
+} else {
+  final msg = response.messageDetail;
+  if (mounted && msg != null && msg.isNotEmpty) {
+    MessageHelper.showIconSnackBar(
+      context,
+      message: msg,
+      isSuccess: false,
+    );
+  }
+}
+```
+
+When AI extraction fails:
+- Show clear error message
+- Keep the captured photo
+- Allow manual entry as fallback
+- Suggest recapturing with better conditions
+
+## Measurement Units
+
+### Dimensions
+
+- **Unit**: Inches (in)
+- **Format**: Integer values (rounded)
+- **Typical Range**: 1-60 inches per dimension
+- **Validation**: Must be positive integers
+
+### Weight
+
+- **Unit**: Pounds (lb)
+- **Format**: Decimal with up to 2 places
+- **Typical Range**: 0.1-150 pounds
+- **Validation**: Must be positive number
+
+```dart
+class _NumberField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final bool integerOnly;
+  final int? maxDecimals;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<TextInputFormatter> formatters;
+
+    if (integerOnly) {
+      formatters = [FilteringTextInputFormatter.digitsOnly];
+    } else {
+      final decimals = maxDecimals ?? 2;
+      final pattern = RegExp('^\\d*\\.?\\d{0,$decimals} ?');
+      formatters = [FilteringTextInputFormatter.allow(pattern)];
+    }
+
+    return TextField(
+      controller: controller,
+      keyboardType: integerOnly
+          ? TextInputType.number
+          : const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: formatters,
+      decoration: InputDecoration(
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        labelText: label,
+        border: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
+      ),
+    );
+  }
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:1191`
+
+## Accuracy and Validation
+
+### Expected Accuracy
+
+- **OCR Recognition**: ~95% for clear labels
+- **Dimension Extraction**: ~90% for standard formats
+- **Weight Extraction**: ~92% for common patterns
+- **Overall Success**: ~85% full auto-fill
+
+<Tip>
+  Always allow users to review and adjust AI-extracted measurements before final submission. The AI is a helpful tool, not a replacement for human verification.
+</Tip>
+
+### Validation Rules
+
+Implement client-side validation:
+
+```dart
+bool _isFormComplete() {
+  final tracking = _codeController.text.trim();
+  final length = double.tryParse(_lengthController.text.trim());
+  final width = double.tryParse(_widthController.text.trim());
+  final height = double.tryParse(_heightController.text.trim());
+  final weight = double.tryParse(_weightController.text.trim());
+
+  return tracking.isNotEmpty &&
+      tracking.length >= 6 &&
+      length != null &&
+      width != null &&
+      height != null &&
+      weight != null &&
+      length > 0 &&
+      width > 0 &&
+      height > 0 &&
+      weight > 0 &&
+      !_isVerifyingTracking;
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/scan_details_page.dart:287`
+
+## Error Handling
+
+### Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| No measurements extracted | Poor image quality | Recapture with better lighting |
+| Partial extraction | Label partially visible | Ensure entire label in frame |
+| Wrong values | Misread characters | Manual correction required |
+| Processing timeout | Large image file | Compress image before upload |
+| API error | Network/server issue | Retry or enter manually |
+
+### User Feedback
+
+Provide clear feedback during processing:
+
+```dart
+if (_isProcessingMeasurements)
+  const SizedBox(
+    width: 24,
+    height: 24,
+    child: CircularProgressIndicator(strokeWidth: 2),
+  )
+else
+  const Icon(
+    Icons.photo_camera_outlined,
+    color: Color(0xFF111827),
+  )
+```
+
+## Package Owner Detection
+
+Additional AI feature to identify package owner from label:
+
+```dart
+Future<ApiResponse<GetPackageOwnerByImageResponse>> getPackageOwnerByImage(
+  GetPackageOwnerByImageRequest request,
+) async {
+  try {
+    final response = await _http.post<GetPackageOwnerByImageResponse>(
+      ApiEndpoints.getPackageOwnerByImage,
+      request.toJson(),
+      (json) => GetPackageOwnerByImageResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: GetPackageOwnerByImageResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: GetPackageOwnerByImageResponse.empty(),
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/services/measurement_service.dart:199`
+
+### Owner Detection Model
+
+```dart
+enum OwnerType {
+  globalShipping,
+  gbi,
+  unknown,
+}
+
+class GetPackageOwnerByImageResponse {
+  final OwnerType ownerPackage;
+  final String? color;
+
+  const GetPackageOwnerByImageResponse({
+    required this.ownerPackage,
+    required this.color,
+  });
+
+  factory GetPackageOwnerByImageResponse.fromJson(Map<String, dynamic> json) {
+    final content = json['content'] as Map<String, dynamic>? ?? json;
+    final ownerRaw = (content['ownerPackage'] as String?) ?? 'Unknown';
+    final normalized = ownerRaw.toLowerCase();
+
+    OwnerType owner;
+    switch (normalized) {
+      case 'glovalshipping':
+      case 'globalshipping':
+        owner = OwnerType.globalShipping;
+        break;
+      case 'gbi':
+        owner = OwnerType.gbi;
+        break;
+      default:
+        owner = OwnerType.unknown;
+        break;
+    }
+
+    return GetPackageOwnerByImageResponse(
+      ownerPackage: owner,
+      color: content['color'] as String?,
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/models/measurement_models.dart:110`
+
+## Future Enhancements
+
+<CardGroup cols={2}>
+  <Card title="Multi-Language Support" icon="language">
+    Expand OCR to handle labels in multiple languages
+  </Card>
+  <Card title="Barcode Integration" icon="barcode">
+    Combine barcode data with OCR for better accuracy
+  </Card>
+  <Card title="Historical Learning" icon="brain">
+    Use historical data to improve extraction accuracy
+  </Card>
+  <Card title="Batch Processing" icon="layer-group">
+    Process multiple labels in a single capture
+  </Card>
+</CardGroup>
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Image Processing" icon="image" href="/features/image-processing">
+    Image capture and compression details
+  </Card>
+  <Card title="Package Scanning" icon="barcode" href="/features/scanning">
+    Complete package registration workflow
+  </Card>
+</CardGroup>

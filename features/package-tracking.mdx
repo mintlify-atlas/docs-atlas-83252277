@@ -1,0 +1,758 @@
+---
+title: 'Package Tracking'
+description: 'Real-time package tracking with detailed history and status updates'
+icon: 'route'
+---
+
+## Overview
+
+LogiScan's package tracking system provides comprehensive visibility into package status, history, and details. Users can query packages by tracking number or package ID, view detailed information including dimensions and weight, access tracking history, and manage package photos.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Identifier Search" icon="magnifying-glass">
+    Search by tracking number or internal package ID
+  </Card>
+  <Card title="Real-Time Status" icon="clock">
+    View current package status and location
+  </Card>
+  <Card title="Tracking History" icon="list-timeline">
+    Complete event timeline with timestamps
+  </Card>
+  <Card title="Photo Management" icon="images">
+    View, add, and manage package photos
+  </Card>
+</CardGroup>
+
+## Tracking Workflow
+
+<Steps>
+  <Step title="Enter Identifier">
+    Scan or type tracking number or package ID
+  </Step>
+  <Step title="Fetch Details">
+    System retrieves package information from backend
+  </Step>
+  <Step title="Display Information">
+    Show package details, status, and history
+  </Step>
+  <Step title="Manage Photos">
+    Add, reorder, or delete package photos
+  </Step>
+  <Step title="Save Changes">
+    Upload new photos or modifications to server
+  </Step>
+</Steps>
+
+## Implementation
+
+### Tracking Details Service
+
+The tracking system is implemented in the `MeasurementService`:
+
+```dart
+Future<ApiResponse<GetPackageTrackingDetailsResponse>>
+    getPackageTrackingDetails(
+  String trackingNumber,
+) async {
+  try {
+    final response = await _http.get<GetPackageTrackingDetailsResponse>(
+      ApiEndpoints.getPackageTrackingDetails,
+      (json) => GetPackageTrackingDetailsResponse.fromJson(json),
+      queryParams: {
+        'identifier': trackingNumber,
+      },
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GetPackageTrackingDetailsResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GetPackageTrackingDetailsResponse.empty(),
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/services/measurement_service.dart:118`
+
+### Tracking Details UI
+
+The main tracking interface with auto-load on scan:
+
+```dart
+Future<void> _loadDetailsAndImages() async {
+  final tracking = _trackingController.text.trim();
+
+  if (tracking.isEmpty) {
+    MessageHelper.showIconSnackBar(
+      context,
+      message: 'Enter a tracking number.',
+      isSuccess: false,
+    );
+    setState(() {
+      _details = null;
+      _photos.clear();
+      _pendingDeleteStoredFileIds.clear();
+    });
+    _trackingFocusNode.requestFocus();
+    return;
+  }
+
+  try {
+    final measurementService = context.read<MeasurementService>();
+
+    final response = await measurementService.getPackageTrackingDetails(
+      tracking,
+    );
+
+    if (!mounted) return;
+
+    final details = response.content;
+    if (response.isSuccessful &&
+        details != null &&
+        details.items.isNotEmpty) {
+      final List<_PhotoItem> loadedPhotos = details.images
+          .map<_PhotoItem>((img) => _PhotoItem.remote(img, isPrimary: false))
+          .toList();
+
+      setState(() {
+        _details = details;
+        _photos
+          ..clear()
+          ..addAll(loadedPhotos);
+        _pendingDeleteStoredFileIds.clear();
+      });
+    } else {
+      final msg =
+          response.messageDetail ??
+          'No package found for this tracking number.';
+      MessageHelper.showIconSnackBar(context, message: msg, isSuccess: false);
+      setState(() {
+        _details = null;
+        _photos.clear();
+        _pendingDeleteStoredFileIds.clear();
+      });
+      _trackingFocusNode.requestFocus();
+    }
+  } catch (_) {
+    if (!mounted) return;
+    MessageHelper.showIconSnackBar(
+      context,
+      message: 'Unexpected error loading package details.',
+      isSuccess: false,
+    );
+  }
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:60`
+
+## Data Models
+
+### GetPackageTrackingDetailsResponse
+
+The main response model containing all package information:
+
+```dart
+class GetPackageTrackingDetailsResponse {
+  final List<PackageTrackingItemDetails> items;
+  final bool allowUploadImages;
+  final List<FileUrlResponse> images;
+  final String? packageStatus;
+
+  const GetPackageTrackingDetailsResponse({
+    required this.items,
+    required this.allowUploadImages,
+    required this.images,
+    this.packageStatus,
+  });
+
+  factory GetPackageTrackingDetailsResponse.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final contentJson = json['content'] as Map<String, dynamic>? ?? {};
+
+    final itemsJson = contentJson['items'] as List<dynamic>?;
+    final items = itemsJson == null
+        ? <PackageTrackingItemDetails>[]
+        : itemsJson
+            .whereType<Map<String, dynamic>>()
+            .map(PackageTrackingItemDetails.fromJson)
+            .toList();
+
+    final images = <FileUrlResponse>[];
+
+    final urlImagesJson = contentJson['urlImages'] as List<dynamic>?;
+    if (urlImagesJson != null) {
+      for (final item in urlImagesJson) {
+        if (item is Map<String, dynamic>) {
+          images.add(FileUrlResponse.fromJson(item));
+        } else if (item is String) {
+          images.add(FileUrlResponse.fromUrlString(item));
+        }
+      }
+    }
+
+    final allowUploadImages = contentJson['allowUploadImages'] as bool? ?? false;
+    final packageStatus = contentJson['packageStatus'] as String?;
+
+    return GetPackageTrackingDetailsResponse(
+      items: items,
+      allowUploadImages: allowUploadImages,
+      images: images,
+      packageStatus: packageStatus,
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/models/get_package_info_models.dart:186`
+
+### PackageTrackingItemDetails
+
+Detailed information for each package:
+
+```dart
+class PackageTrackingItemDetails {
+  final String? trackingNumber;
+  final double? weight;
+  final double? height;
+  final double? length;
+  final double? width;
+  final String? dimensions;
+  final String? packageTypeLabel;
+  final String? sender;
+  final String? recipient;
+  final String? client;
+  final String? mailbox;
+  final String? status;
+  final PackageTrackingItemPackage? packageItem;
+
+  const PackageTrackingItemDetails({
+    this.trackingNumber,
+    this.weight,
+    this.height,
+    this.length,
+    this.width,
+    this.dimensions,
+    this.packageTypeLabel,
+    this.sender,
+    this.recipient,
+    this.client,
+    this.mailbox,
+    this.status,
+    this.packageItem,
+  });
+}
+```
+
+### PackageTrackingHistoryEntry
+
+Individual tracking events:
+
+```dart
+class PackageTrackingHistoryEntry {
+  final String? event;
+  final String? remarks;
+  final DateTime? dateTime;
+
+  const PackageTrackingHistoryEntry({
+    this.event,
+    this.remarks,
+    this.dateTime,
+  });
+
+  factory PackageTrackingHistoryEntry.fromJson(Map<String, dynamic> json) {
+    final rawDate = json['dateTime'] as String?;
+    DateTime? parsedDate;
+    if (rawDate != null) {
+      try {
+        parsedDate = DateTime.tryParse(rawDate);
+      } catch (_) {
+        parsedDate = null;
+      }
+    }
+
+    return PackageTrackingHistoryEntry(
+      event: json['event'] as String?,
+      remarks: json['remarks'] as String?,
+      dateTime: parsedDate,
+    );
+  }
+}
+```
+
+**Location**: `lib/features/scan/models/get_package_info_models.dart:24`
+
+## Photo Management
+
+### Adding Photos
+
+Users can add photos to packages:
+
+```dart
+Future<void> _addImageFromCamera() async {
+  const maxImages = 5;
+  if (_photos.length >= maxImages) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Maximum 5 images allowed. Remove one first.'),
+      ),
+    );
+    return;
+  }
+
+  final XFile? image = await _picker.pickImage(
+    source: ImageSource.camera,
+    maxWidth: 1920,
+    maxHeight: 1080,
+    imageQuality: 85,
+  );
+
+  if (image == null) return;
+
+  setState(() {
+    _photos.add(_PhotoItem.local(image));
+  });
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:176`
+
+### Saving Photos
+
+Upload new photos and delete removed ones:
+
+```dart
+Future<void> _saveImages() async {
+  final packageId = _currentPackageId();
+  final canUploadImages = _details?.allowUploadImages ?? false;
+
+  if (packageId == null || !canUploadImages || _isSavingImages) return;
+  final measurementService = context.read<MeasurementService>();
+
+  setState(() {
+    _isSavingImages = true;
+  });
+
+  try {
+    final deleteIds = _pendingDeleteStoredFileIds.toList();
+
+    final List<PackageImageEncodeFile> files = [];
+    for (final item in _photos) {
+      final remote = item.remoteFile;
+      final file = item.localFile;
+
+      if (remote != null && remote.storedFileId != 0) {
+        files.add(PackageImageEncodeFile(storedFileId: remote.storedFileId));
+      } else if (file != null) {
+        final bytes = await File(file.path).readAsBytes();
+        final encoded = base64Encode(bytes);
+        final name = file.name;
+        final ext = name.contains('.') ? name.split('.').last : 'jpg';
+
+        files.add(
+          PackageImageEncodeFile(
+            identifier: file.path,
+            encodeContent: encoded,
+            fileExtension: ext,
+            fileName: name,
+          ),
+        );
+      }
+    }
+
+    if (deleteIds.isNotEmpty) {
+      final deleteRequest = DeleteTrackingPackageImagesRequest(
+        storedFileIds: deleteIds,
+      );
+      final deleteResponse = await measurementService
+          .deleteTrackingPackageImages(deleteRequest);
+
+      if (!mounted) return;
+
+      if (!deleteResponse.isSuccessful) {
+        final msg =
+            deleteResponse.messageDetail ??
+            'Unable to delete some images for this package.';
+        MessageHelper.showIconSnackBar(
+          context,
+          message: msg,
+          isSuccess: false,
+        );
+        return;
+      }
+    }
+
+    if (files.isNotEmpty) {
+      final registerRequest = RegisterPackageImagesByMobileRequest(
+        packageId: packageId,
+        files: files,
+      );
+      final registerResponse = await measurementService.registerPackageImages(
+        registerRequest,
+      );
+
+      if (!mounted) return;
+
+      if (!registerResponse.isSuccessful) {
+        final msg =
+            registerResponse.messageDetail ??
+            'Unable to register images for this package.';
+        MessageHelper.showIconSnackBar(
+          context,
+          message: msg,
+          isSuccess: false,
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    MessageHelper.showIconSnackBar(
+      context,
+      message: 'Package images updated successfully.',
+      isSuccess: true,
+    );
+  } catch (_) {
+    // Error handling
+  }
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:222`
+
+### Image Reordering
+
+Photos can be reordered via drag and drop:
+
+```dart
+void _reorderImages(int oldIndex, int newIndex) {
+  setState(() {
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+    final item = _photos.removeAt(oldIndex);
+    _photos.insert(newIndex, item);
+  });
+}
+```
+
+## Status Display
+
+Package status is prominently displayed:
+
+```dart
+Builder(
+  builder: (context) {
+    final details = _details;
+    final firstItem = (details?.items.isNotEmpty ?? false)
+        ? details!.items.first
+        : null;
+    final statusText =
+        details?.packageStatus ?? firstItem?.status ?? '';
+    final hasStatus = statusText.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: hasStatus
+            ? const Color(0xFFE0F2F1)
+            : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            hasStatus
+                ? Icons.check_circle
+                : Icons.info_outline,
+            color: hasStatus
+                ? Colors.teal.shade700
+                : Colors.grey.shade600,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              hasStatus
+                  ? statusText
+                  : 'No status information available.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: hasStatus
+                    ? FontWeight.w600
+                    : FontWeight.w400,
+                color: hasStatus
+                    ? Colors.teal.shade800
+                    : Colors.grey.shade700,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  },
+)
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:526`
+
+## History Timeline
+
+Tracking events are displayed in chronological order:
+
+```dart
+if (history.isNotEmpty) {
+  children.add(const SizedBox(height: 8));
+  children.add(
+    const Text(
+      'History',
+      style: TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        color: Color(0xFF111827),
+      ),
+    ),
+  );
+  children.add(const SizedBox(height: 4));
+  children.addAll(
+    history.map((h) {
+      final dateText = _formatHistoryDate(h.dateTime);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.circle, size: 6, color: Color(0xFF9CA3AF)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (h.event != null && h.event!.isNotEmpty)
+                    Text(
+                      h.event!,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  if (h.remarks != null && h.remarks!.isNotEmpty)
+                    Text(h.remarks!, style: const TextStyle(fontSize: 12)),
+                  if (dateText.isNotEmpty)
+                    Text(
+                      dateText,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }),
+  );
+}
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:963`
+
+## Multi-Package Support
+
+The system handles packages with multiple items:
+
+```dart
+final bool useAccordion = items.length > 1;
+
+if (useAccordion)
+  Column(
+    children: List.generate(items.length, (index) {
+      final item = items[index];
+      final pkg = item.packageItem;
+      final idText = pkg != null && pkg.packageId != 0
+          ? pkg.packageId.toString()
+          : '-';
+      final tracking = item.trackingNumber;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF9FAFB),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.grey.withValues(alpha: 0.35),
+          ),
+        ),
+        child: ExpansionTile(
+          leading: CircleAvatar(
+            radius: 16,
+            child: Text('${index + 1}'),
+          ),
+          title: Text('Package ID: $idText'),
+          subtitle: tracking != null && tracking.isNotEmpty
+              ? Text(tracking)
+              : null,
+          children: [
+            _buildPackageDetailsBody(item),
+          ],
+        ),
+      );
+    }),
+  )
+else if (items.length == 1)
+  Container(
+    child: Column(
+      children: [
+        Text('Package information'),
+        _buildPackageDetailsBody(items.first),
+      ],
+    ),
+  )
+```
+
+**Location**: `lib/features/auth/presentation/pages/tracking_details_with_photos_page.dart:582`
+
+## API Endpoints
+
+### Get Package Tracking Details
+
+**Endpoint**: `GET /api/mobile/v1.0/Tracking/get-package-tracking-details`
+
+**Query Parameters**:
+- `identifier`: Tracking number or package ID
+
+**Response**:
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "content": {
+    "items": [
+      {
+        "trackingNumber": "ABC123456789",
+        "weight": 15.5,
+        "height": 10,
+        "length": 12,
+        "width": 8,
+        "dimensions": "12 x 8 x 10 in",
+        "packageTypeLabel": "Box",
+        "sender": "ACME Corp",
+        "recipient": "John Doe",
+        "status": "In Transit",
+        "packageItem": {
+          "packageId": 12345,
+          "code": "PKG-001",
+          "history": [
+            {
+              "event": "Package Received",
+              "remarks": "Received at warehouse",
+              "dateTime": "2026-03-06T10:30:00Z"
+            },
+            {
+              "event": "In Transit",
+              "remarks": "En route to destination",
+              "dateTime": "2026-03-06T14:00:00Z"
+            }
+          ]
+        }
+      }
+    ],
+    "allowUploadImages": true,
+    "urlImages": [
+      "https://storage.example.com/images/pkg-12345-1.jpg",
+      "https://storage.example.com/images/pkg-12345-2.jpg"
+    ],
+    "packageStatus": "In Transit"
+  }
+}
+```
+
+### Register Package Images
+
+**Endpoint**: `POST /api/mobile/v1.0/Tracking/register-package-images`
+
+**Request**:
+```json
+{
+  "packageId": 12345,
+  "files": [
+    {
+      "encodeContent": "base64EncodedImageData...",
+      "fileExtension": "jpg",
+      "fileName": "package_photo_1.jpg"
+    },
+    {
+      "storedFileId": 67890
+    }
+  ]
+}
+```
+
+### Delete Package Images
+
+**Endpoint**: `DELETE /api/mobile/v1.0/Tracking/delete-tracking-images`
+
+**Request**:
+```json
+{
+  "storedFileIds": [67890, 67891]
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Efficient Lookups">
+    - Use debouncing for auto-search (80ms delay)
+    - Cache recently viewed packages
+    - Validate identifiers before API calls
+    - Show loading indicators during fetch
+  </Accordion>
+  
+  <Accordion title="Photo Management">
+    - Limit to 5 images per package
+    - Compress images before upload (85% quality, 1920x1080 max)
+    - Allow reordering for better organization
+    - Confirm before deletion
+  </Accordion>
+  
+  <Accordion title="User Experience">
+    - Auto-focus input after operations
+    - Show clear status indicators
+    - Display timestamps in local format
+    - Handle empty states gracefully
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Use infrared scanners for faster tracking number input in high-volume environments. The system automatically triggers lookup after a brief delay.
+</Tip>
+
+## Related Features
+
+<CardGroup cols={2}>
+  <Card title="Package Scanning" icon="barcode" href="/features/scanning">
+    Initial package registration and scanning
+  </Card>
+  <Card title="Image Processing" icon="image" href="/features/image-processing">
+    Photo capture and management details
+  </Card>
+</CardGroup>

@@ -1,0 +1,375 @@
+---
+title: Package Processing Endpoints
+description: API endpoints for AI-powered package measurement, registration, and image processing
+---
+
+## Overview
+
+The package processing endpoints handle AI-powered measurement extraction from package photos, package registration, image uploads, and package owner identification.
+
+**Base URL**: `https://beehive.gbilogistics.net/api/mobile/v1.0`
+
+**Authentication**: All endpoints require a valid JWT token
+
+## Endpoints
+
+### POST /ProcessPackage/process-measurement-data
+
+Extract package dimensions and weight from a label photo using OCR and AI processing.
+
+**Endpoint**: `/api/mobile/v1.0/ProcessPackage/process-measurement-data`
+
+**Request Body**:
+
+<ParamField path="file" type="object" required>
+  Encoded file object containing the package label image
+  
+  <Expandable title="file properties">
+    <ParamField path="encodeContent" type="string" required>
+      Base64-encoded image data
+    </ParamField>
+    
+    <ParamField path="fileExtension" type="string" required>
+      Image file extension (e.g., "jpg", "png")
+    </ParamField>
+    
+    <ParamField path="fileName" type="string" required>
+      Original filename
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "file": {
+    "encodeContent": "iVBORw0KGgoAAAANSUhEUgAA...",
+    "fileExtension": "jpg",
+    "fileName": "package_label.jpg"
+  }
+}
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  Extracted measurement data
+  
+  <Expandable title="content properties">
+    <ResponseField name="weight" type="double">
+      Package weight in the unit specified on the label
+    </ResponseField>
+    
+    <ResponseField name="width" type="double">
+      Package width
+    </ResponseField>
+    
+    <ResponseField name="length" type="double">
+      Package length
+    </ResponseField>
+    
+    <ResponseField name="height" type="double">
+      Package height
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": "Measurements extracted successfully",
+  "content": {
+    "weight": 2.5,
+    "width": 12.0,
+    "length": 18.0,
+    "height": 6.0
+  }
+}
+```
+
+**Usage Example**:
+
+```dart measurement_service.dart:15-38
+Future<ApiResponse<ProcessMeasurementDataResponse>>
+    processMeasurementData(ProcessMeasurementDataRequest request) async {
+  try {
+    final response = await _http.post<ProcessMeasurementDataResponse>(
+      ApiEndpoints.processMeasurement,
+      request.toJson(),
+      (json) => ProcessMeasurementDataResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: ProcessMeasurementDataResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: ProcessMeasurementDataResponse.empty(),
+    );
+  }
+}
+```
+
+<Note>
+  The AI processing can extract dimensions from various label formats. Values may be null if not detected on the label.
+</Note>
+
+---
+
+### POST /ProcessPackage/register-package
+
+Register a new package in the system after scanning and measurement.
+
+**Endpoint**: `/api/mobile/v1.0/ProcessPackage/register-package`
+
+**Request Body**:
+
+<ParamField path="trackingNumber" type="string" required>
+  Package tracking number
+</ParamField>
+
+<ParamField path="weight" type="double">
+  Package weight
+</ParamField>
+
+<ParamField path="width" type="double">
+  Package width
+</ParamField>
+
+<ParamField path="length" type="double">
+  Package length
+</ParamField>
+
+<ParamField path="height" type="double">
+  Package height
+</ParamField>
+
+<ParamField path="userRegistrationDate" type="string" required>
+  ISO 8601 timestamp of registration
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "trackingNumber": "1Z999AA10123456784",
+  "weight": 2.5,
+  "width": 12.0,
+  "length": 18.0,
+  "height": 6.0,
+  "userRegistrationDate": "2024-03-06T14:30:00.000Z"
+}
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  Operation result
+  
+  <Expandable title="content properties">
+    <ResponseField name="userMessage" type="string">
+      Success or error message to display to the user
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### POST /ProcessPackage/upload-package-image-without-id
+
+Upload package images when the package ID is not yet known (before registration).
+
+**Endpoint**: `/api/mobile/v1.0/ProcessPackage/upload-package-image-without-id`
+
+**Request Body**:
+
+<ParamField path="images" type="array" required>
+  Array of image objects to upload
+  
+  <Expandable title="image object properties">
+    <ParamField path="identifier" type="string">
+      Optional package identifier (tracking number)
+    </ParamField>
+    
+    <ParamField path="encodeContent" type="string">
+      Base64-encoded image data
+    </ParamField>
+    
+    <ParamField path="fileExtension" type="string">
+      Image file extension
+    </ParamField>
+    
+    <ParamField path="fileName" type="string">
+      Original filename
+    </ParamField>
+    
+    <ParamField path="userRegistrationDate" type="string" required>
+      ISO 8601 timestamp
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "images": [
+    {
+      "identifier": "1Z999AA10123456784",
+      "encodeContent": "iVBORw0KGgoAAAANSUhEUgAA...",
+      "fileExtension": "jpg",
+      "fileName": "photo_1.jpg",
+      "userRegistrationDate": "2024-03-06T14:30:00.000Z"
+    },
+    {
+      "identifier": "1Z999AA10123456784",
+      "encodeContent": "iVBORw0KGgoAAAANSUhEUgBB...",
+      "fileExtension": "jpg",
+      "fileName": "photo_2.jpg",
+      "userRegistrationDate": "2024-03-06T14:30:15.000Z"
+    }
+  ]
+}
+```
+
+<Warning>
+  This endpoint should only be used for uploading images before package registration. For adding images to existing packages, use `/Tracking/register-package-images` instead.
+</Warning>
+
+---
+
+### POST /ProcessPackage/get-package-owner-by-image
+
+Identify the package owner (shipping company) by analyzing a package photo using AI.
+
+**Endpoint**: `/api/mobile/v1.0/ProcessPackage/get-package-owner-by-image`
+
+**Request Body**:
+
+<ParamField path="image" type="object" required>
+  Encoded image file
+  
+  <Expandable title="image properties">
+    <ParamField path="encodeContent" type="string" required>
+      Base64-encoded image data
+    </ParamField>
+    
+    <ParamField path="fileExtension" type="string" required>
+      Image file extension
+    </ParamField>
+    
+    <ParamField path="fileName" type="string" required>
+      Original filename
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  Owner identification result
+  
+  <Expandable title="content properties">
+    <ResponseField name="ownerPackage" type="string">
+      Identified owner: "GlovalShipping", "GBI", or "Unknown"
+    </ResponseField>
+    
+    <ResponseField name="color" type="string">
+      Suggested color code for UI display (optional)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": "Owner identified",
+  "content": {
+    "ownerPackage": "GlovalShipping",
+    "color": "#3dcffc"
+  }
+}
+```
+
+**Usage Example**:
+
+```dart measurement_service.dart:199-223
+Future<ApiResponse<GetPackageOwnerByImageResponse>> getPackageOwnerByImage(
+  GetPackageOwnerByImageRequest request,
+) async {
+  try {
+    final response = await _http.post<GetPackageOwnerByImageResponse>(
+      ApiEndpoints.getPackageOwnerByImage,
+      request.toJson(),
+      (json) => GetPackageOwnerByImageResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: GetPackageOwnerByImageResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: GetPackageOwnerByImageResponse.empty(),
+    );
+  }
+}
+```
+
+<Tip>
+  This AI feature helps automatically route packages to the correct processing workflow based on the shipping company.
+</Tip>
+
+---
+
+## Image Encoding
+
+All image uploads use Base64 encoding. The mobile app captures images at 1920x1080 resolution with 85% JPEG quality, then encodes them:
+
+```dart
+final bytes = await file.readAsBytes();
+final encoded = base64Encode(bytes);
+final extension = path.extension(file.path).replaceFirst('.', '');
+final fileName = path.basename(file.path);
+
+final encodedFile = RequestEncodeFile(
+  encodeContent: encoded,
+  fileExtension: extension,
+  fileName: fileName,
+);
+```
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="MeasurementService" icon="ruler" href="/api/measurement-service">
+    Service implementation for package processing
+  </Card>
+  <Card title="Measurement Models" icon="database" href="/api/measurement-models">
+    Request and response data models
+  </Card>
+  <Card title="AI Measurement" icon="brain" href="/features/ai-measurement">
+    AI-powered measurement feature guide
+  </Card>
+  <Card title="Image Processing" icon="image" href="/features/image-processing">
+    Image capture and processing guide
+  </Card>
+</CardGroup>

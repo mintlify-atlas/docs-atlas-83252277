@@ -1,0 +1,419 @@
+---
+title: Development Setup
+description: Set up your development environment for contributing to LogiScan
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed on your development machine:
+
+<CardGroup cols={2}>
+  <Card title="Flutter SDK" icon="mobile">
+    Version 3.9.2 or higher
+  </Card>
+  <Card title="Dart SDK" icon="code">
+    Version 3.9.2 or higher (included with Flutter)
+  </Card>
+  <Card title="Android Studio" icon="android">
+    For Android development
+  </Card>
+  <Card title="Xcode" icon="apple">
+    For iOS development (macOS only)
+  </Card>
+</CardGroup>
+
+## Initial Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the LogiScan repository to your local machine:
+    
+    ```bash
+    git clone <repository-url>
+    cd logiscan
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all Flutter dependencies defined in `pubspec.yaml`:
+    
+    ```bash
+    flutter pub get
+    ```
+    
+    This will install all required packages including:
+    - Firebase Core & Crashlytics
+    - Provider for state management
+    - HTTP for API communication
+    - Mobile Scanner for barcode scanning
+    - Image Picker & Camera for image capture
+    - Secure Storage for credentials
+  </Step>
+
+  <Step title="Configure Firebase">
+    The project uses Firebase for crash reporting and analytics. The `firebase_options.dart` file is already configured with Firebase settings for multiple platforms.
+    
+    <Note>
+      If you need to reconfigure Firebase, use the FlutterFire CLI:
+      ```bash
+      flutterfire configure
+      ```
+    </Note>
+  </Step>
+
+  <Step title="Set API Environment">
+    Open `lib/core/config/api_config.dart` and configure the API environment:
+    
+    ```dart lib/core/config/api_config.dart
+    /// Modo de desarrollo (cambiar a false para producción)
+    static const bool isDevelopment = false;
+    
+    /// URL base de la API de desarrollo
+    static const String devBaseUrl = 'http://100.104.120.121:82';
+    
+    /// URL base de la API de producción
+    static const String prodBaseUrl = 'https://beehive.gbilogistics.net';
+    ```
+    
+    Set `isDevelopment` to `true` for local testing or `false` for production builds.
+  </Step>
+</Steps>
+
+## IDE Configuration
+
+### Visual Studio Code
+
+<Steps>
+  <Step title="Install Extensions">
+    Install the following VS Code extensions:
+    - **Flutter** (Dart-Code.flutter)
+    - **Dart** (Dart-Code.dart-code)
+    - **Flutter Widget Snippets**
+  </Step>
+
+  <Step title="Configure Launch Settings">
+    Create `.vscode/launch.json` for debugging:
+    
+    ```json
+    {
+      "version": "0.2.0",
+      "configurations": [
+        {
+          "name": "LogiScan (Dev)",
+          "request": "launch",
+          "type": "dart",
+          "flutterMode": "debug"
+        },
+        {
+          "name": "LogiScan (Profile)",
+          "request": "launch",
+          "type": "dart",
+          "flutterMode": "profile"
+        },
+        {
+          "name": "LogiScan (Release)",
+          "request": "launch",
+          "type": "dart",
+          "flutterMode": "release"
+        }
+      ]
+    }
+    ```
+  </Step>
+</Steps>
+
+### Android Studio
+
+<Steps>
+  <Step title="Install Plugins">
+    Install the Flutter and Dart plugins from **Settings > Plugins**.
+  </Step>
+
+  <Step title="Open Project">
+    Open the project by selecting the root `logiscan` directory.
+  </Step>
+
+  <Step title="Configure Device">
+    Set up an Android emulator or connect a physical device for testing.
+  </Step>
+</Steps>
+
+## Running the App
+
+### Development Mode
+
+Run the app in debug mode with hot reload:
+
+```bash
+flutter run
+```
+
+For a specific device:
+
+```bash
+# List available devices
+flutter devices
+
+# Run on specific device
+flutter run -d <device-id>
+```
+
+### Profile Mode
+
+Run in profile mode for performance testing:
+
+```bash
+flutter run --profile
+```
+
+### Release Mode
+
+Run a release build:
+
+```bash
+flutter run --release
+```
+
+## Running Tests
+
+LogiScan includes widget tests to ensure UI functionality:
+
+```bash
+# Run all tests
+flutter test
+
+# Run specific test file
+flutter test test/widget_test.dart
+
+# Run tests with coverage
+flutter test --coverage
+```
+
+### Example Test
+
+Here's the current widget test from `test/widget_test.dart`:
+
+```dart test/widget_test.dart
+import 'package:flutter_test/flutter_test.dart';
+import 'package:logiscan/main.dart';
+
+void main() {
+  testWidgets('Auth screen shows Login by default', (WidgetTester tester) async {
+    // Build our app and trigger a frame.
+    await tester.pumpWidget(const LogiScanApp());
+
+    // Verify that the Login title is visible.
+    expect(find.text('Login'), findsWidgets);
+  });
+}
+```
+
+## Building for Production
+
+### Android (APK)
+
+Build a release APK:
+
+```bash
+flutter build apk --release
+```
+
+The APK will be located at `build/app/outputs/flutter-apk/app-release.apk`.
+
+### Android (App Bundle)
+
+Build an Android App Bundle for Play Store:
+
+```bash
+flutter build appbundle --release
+```
+
+### iOS
+
+Build for iOS (macOS only):
+
+```bash
+flutter build ios --release
+```
+
+<Warning>
+  Before building for iOS, ensure you have:
+  - Valid Apple Developer account
+  - Proper provisioning profiles configured
+  - Xcode command line tools installed
+</Warning>
+
+## Code Analysis
+
+LogiScan uses `flutter_lints` for code quality. Run analysis to check for issues:
+
+```bash
+flutter analyze
+```
+
+The linting rules are configured in `analysis_options.yaml`:
+
+```yaml analysis_options.yaml
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Add custom lint rules here
+```
+
+## Debugging
+
+### Using AppLogger
+
+LogiScan includes a custom logging utility in `lib/core/services/app_logger.dart`:
+
+```dart
+import 'package:logiscan/core/services/app_logger.dart';
+
+// Log general information
+AppLogger.log('User logged in', source: 'AuthProvider');
+
+// Log errors with stack trace
+AppLogger.error(
+  'Failed to fetch data',
+  error: error,
+  stackTrace: stackTrace,
+  source: 'HttpService',
+);
+
+// Log API calls
+AppLogger.apiCall('/api/mobile/v1.0/Auth/login', method: 'POST');
+
+// Log API responses
+AppLogger.apiResponse(
+  '/api/mobile/v1.0/Auth/login',
+  statusCode: 200,
+  body: response.body,
+);
+```
+
+### Firebase Crashlytics
+
+The app automatically reports crashes to Firebase Crashlytics. Fatal errors are configured in `lib/main.dart`:
+
+```dart lib/main.dart
+// Pass all uncaught "fatal" errors from the framework to Crashlytics
+FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+// Pass all uncaught asynchronous errors to Crashlytics
+PlatformDispatcher.instance.onError = (error, stack) {
+  FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  return true;
+};
+```
+
+## Version Management
+
+Update the app version in `pubspec.yaml`:
+
+```yaml pubspec.yaml
+version: 1.0.0+8
+```
+
+Format: `MAJOR.MINOR.PATCH+BUILD_NUMBER`
+
+The `VersionService` automatically reads this and includes version headers in all API requests:
+
+```dart lib/core/services/version_service.dart
+Map<String, String> get versionHeaders => {
+  'X-App-Version': version,
+  'X-App-Build': buildNumber,
+  'X-App-Platform': platform,
+  'X-Client-Type': 'mobile-app',
+};
+```
+
+## Common Commands
+
+<CodeGroup>
+```bash Clean Build
+# Clean build artifacts
+flutter clean
+
+# Reinstall dependencies
+flutter pub get
+
+# Run app
+flutter run
+```
+
+```bash Update Dependencies
+# Update to latest compatible versions
+flutter pub upgrade
+
+# Update to latest major versions
+flutter pub upgrade --major-versions
+```
+
+```bash Code Generation
+# If you add serialization or code generation
+flutter pub run build_runner build
+
+# Watch for changes
+flutter pub run build_runner watch
+```
+</CodeGroup>
+
+## Troubleshooting
+
+### Dependency Issues
+
+If you encounter dependency conflicts:
+
+```bash
+flutter clean
+flutter pub cache repair
+flutter pub get
+```
+
+### Platform-Specific Issues
+
+**Android:**
+```bash
+cd android
+./gradlew clean
+cd ..
+flutter run
+```
+
+**iOS:**
+```bash
+cd ios
+pod deintegrate
+pod install
+cd ..
+flutter run
+```
+
+### Firebase Configuration Issues
+
+If Firebase isn't working properly:
+
+```bash
+# Reconfigure Firebase
+flutterfire configure
+
+# Ensure google-services.json (Android) and GoogleService-Info.plist (iOS) are present
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Project Structure" icon="folder-tree" href="/development/project-structure">
+    Learn about the codebase organization
+  </Card>
+  <Card title="Theming" icon="palette" href="/development/theming">
+    Customize the app's appearance
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/development/error-handling">
+    Understand error patterns
+  </Card>
+  <Card title="API Configuration" icon="gear" href="/architecture/api-integration">
+    Configure API endpoints
+  </Card>
+</CardGroup>

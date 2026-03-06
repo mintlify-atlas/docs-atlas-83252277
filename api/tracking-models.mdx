@@ -1,0 +1,797 @@
+---
+title: 'Tracking Models'
+description: 'Data models for package tracking, registration, and management'
+icon: 'map-pin'
+---
+
+## Overview
+
+The tracking models handle package verification, registration, and detailed tracking information. These models are spread across multiple files in `lib/features/scan/models/`.
+
+---
+
+## Verification Models
+
+### VerifyTrackingNumberRequest
+
+Request to verify if a tracking number is registered in the system.
+
+#### Fields
+
+<ParamField path="trackingNumber" type="String" required>
+  The tracking number to verify
+</ParamField>
+
+#### Constructor
+
+```dart
+const VerifyTrackingNumberRequest({required this.trackingNumber});
+```
+
+#### Methods
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Example:**
+
+```dart
+final request = VerifyTrackingNumberRequest(
+  trackingNumber: 'TRACK123456789',
+);
+
+await httpService.post('/verify', data: request.toJson());
+```
+
+---
+
+### VerifyTrackingNumberResponse
+
+Response containing tracking number verification status.
+
+#### Fields
+
+<ResponseField name="isRegistered" type="bool" required>
+  Indicates whether the tracking number has a registration
+</ResponseField>
+
+<ResponseField name="registrationDateTime" type="DateTime?">
+  Date and time when the tracking was registered (if applicable)
+</ResponseField>
+
+#### Constructors
+
+##### Default Constructor
+
+```dart
+const VerifyTrackingNumberResponse({
+  required this.isRegistered,
+  this.registrationDateTime,
+});
+```
+
+##### empty()
+
+Creates an empty response with `isRegistered = false`.
+
+```dart
+const VerifyTrackingNumberResponse.empty()
+```
+
+##### fromJson()
+
+<Note>
+  Supports both camelCase and PascalCase field names from the backend.
+</Note>
+
+```dart
+factory VerifyTrackingNumberResponse.fromJson(Map<String, dynamic> json)
+```
+
+**Example:**
+
+```dart
+final response = VerifyTrackingNumberResponse.fromJson({
+  'content': {
+    'isRegistered': true,
+    'registrationDateTime': '2026-03-05T14:30:00Z'
+  }
+});
+
+if (response.isRegistered) {
+  print('Registered on: ${response.registrationDateTime}');
+}
+```
+
+---
+
+## Registration Models
+
+### RegisterPackageRequest
+
+Request to register a new package with dimensions and optional images.
+
+#### Fields
+
+<ParamField path="trackingNumber" type="String" required>
+  The tracking number for the package
+</ParamField>
+
+<ParamField path="weight" type="double" required>
+  Package weight in kilograms
+</ParamField>
+
+<ParamField path="width" type="double" required>
+  Package width in centimeters
+</ParamField>
+
+<ParamField path="length" type="double" required>
+  Package length in centimeters
+</ParamField>
+
+<ParamField path="height" type="double" required>
+  Package height in centimeters
+</ParamField>
+
+<ParamField path="files" type="List<RequestEncodeFile>?">
+  Optional list of image files to attach to the package
+</ParamField>
+
+#### Constructor
+
+```dart
+const RegisterPackageRequest({
+  required this.trackingNumber,
+  required this.weight,
+  required this.width,
+  required this.length,
+  required this.height,
+  this.files,
+});
+```
+
+#### Methods
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+<Info>
+  The `files` array is only included in the JSON if it's not null and not empty.
+</Info>
+
+**Example:**
+
+```dart
+final request = RegisterPackageRequest(
+  trackingNumber: 'TRACK123456789',
+  weight: 2.5,
+  width: 30.0,
+  length: 40.0,
+  height: 20.0,
+  files: [
+    RequestEncodeFile(
+      encodeContent: base64Image1,
+      fileExtension: 'jpg',
+      fileName: 'front.jpg',
+    ),
+    RequestEncodeFile(
+      encodeContent: base64Image2,
+      fileExtension: 'jpg',
+      fileName: 'back.jpg',
+    ),
+  ],
+);
+```
+
+---
+
+### GenericOperationResponse
+
+Generic response for operations that return a user message.
+
+#### Fields
+
+<ResponseField name="userMessage" type="String?">
+  Message to display to the user
+</ResponseField>
+
+#### Constructor
+
+```dart
+const GenericOperationResponse({this.userMessage});
+```
+
+#### fromJson()
+
+```dart
+factory GenericOperationResponse.fromJson(Map<String, dynamic> json)
+```
+
+---
+
+## Package Details Models
+
+### FileUrlResponse
+
+Represents a stored file with its URL.
+
+#### Fields
+
+<ResponseField name="storedFileId" type="int" required>
+  Unique identifier for the stored file
+</ResponseField>
+
+<ResponseField name="url" type="String?">
+  URL to access the file
+</ResponseField>
+
+#### Constructors
+
+##### fromJson()
+
+```dart
+factory FileUrlResponse.fromJson(Map<String, dynamic> json)
+```
+
+##### fromUrlString()
+
+Helper to build from a plain URL string when backend sends only URLs.
+
+```dart
+factory FileUrlResponse.fromUrlString(String url)
+```
+
+---
+
+### PackageTrackingHistoryEntry
+
+Historical tracking event for a package.
+
+#### Fields
+
+<ResponseField name="event" type="String?">
+  Description of the tracking event
+</ResponseField>
+
+<ResponseField name="remarks" type="String?">
+  Additional remarks or notes about the event
+</ResponseField>
+
+<ResponseField name="dateTime" type="DateTime?">
+  Date and time when the event occurred
+</ResponseField>
+
+#### Constructor
+
+```dart
+const PackageTrackingHistoryEntry({
+  this.event,
+  this.remarks,
+  this.dateTime,
+});
+```
+
+#### fromJson()
+
+```dart
+factory PackageTrackingHistoryEntry.fromJson(Map<String, dynamic> json)
+```
+
+**Example:**
+
+```dart
+final historyEntry = PackageTrackingHistoryEntry.fromJson({
+  'event': 'Package received at facility',
+  'remarks': 'Warehouse A',
+  'dateTime': '2026-03-05T08:00:00Z'
+});
+```
+
+---
+
+### PackageServiceDetails
+
+Service or handling information associated with a package.
+
+#### Fields
+
+<ResponseField name="name" type="String?">
+  Display name of the service (maps from `name` or `serviceName`)
+</ResponseField>
+
+<ResponseField name="status" type="String?">
+  Status text of the service
+</ResponseField>
+
+<ResponseField name="requestDate" type="DateTime?">
+  Request date/time of the service
+</ResponseField>
+
+#### Constructor
+
+```dart
+const PackageServiceDetails({
+  this.name,
+  this.status,
+  this.requestDate,
+});
+```
+
+#### fromJson()
+
+<Note>
+  Handles both `serviceName`/`name` and `requestDate`/`serviceRequestDate` field variations.
+</Note>
+
+```dart
+factory PackageServiceDetails.fromJson(Map<String, dynamic> json)
+```
+
+---
+
+### PackageTrackingItemPackage
+
+Inner package item object with ID, code, history, and service information.
+
+#### Fields
+
+<ResponseField name="packageId" type="int" required>
+  Unique identifier for the package
+</ResponseField>
+
+<ResponseField name="code" type="String?">
+  Package code or reference
+</ResponseField>
+
+<ResponseField name="history" type="List<PackageTrackingHistoryEntry>" required>
+  List of tracking history events
+</ResponseField>
+
+<ResponseField name="service" type="PackageServiceDetails?">
+  Service details for the package
+</ResponseField>
+
+#### Constructor
+
+```dart
+const PackageTrackingItemPackage({
+  required this.packageId,
+  this.code,
+  required this.history,
+  this.service,
+});
+```
+
+#### fromJson()
+
+```dart
+factory PackageTrackingItemPackage.fromJson(Map<String, dynamic> json)
+```
+
+---
+
+### PackageTrackingItemDetails
+
+Detailed tracking information for a single package item.
+
+#### Fields
+
+<ResponseField name="trackingNumber" type="String?">
+  The tracking number
+</ResponseField>
+
+<ResponseField name="weight" type="double?">
+  Package weight in kilograms
+</ResponseField>
+
+<ResponseField name="height" type="double?">
+  Package height in centimeters
+</ResponseField>
+
+<ResponseField name="length" type="double?">
+  Package length in centimeters
+</ResponseField>
+
+<ResponseField name="width" type="double?">
+  Package width in centimeters
+</ResponseField>
+
+<ResponseField name="dimensions" type="String?">
+  Formatted dimensions string
+</ResponseField>
+
+<ResponseField name="packageTypeLabel" type="String?">
+  Label describing the package type
+</ResponseField>
+
+<ResponseField name="sender" type="String?">
+  Sender information
+</ResponseField>
+
+<ResponseField name="recipient" type="String?">
+  Recipient information
+</ResponseField>
+
+<ResponseField name="client" type="String?">
+  Client information
+</ResponseField>
+
+<ResponseField name="mailbox" type="String?">
+  Mailbox information
+</ResponseField>
+
+<ResponseField name="status" type="String?">
+  Current status of the package
+</ResponseField>
+
+<ResponseField name="packageItem" type="PackageTrackingItemPackage?">
+  Detailed package item with history and service
+</ResponseField>
+
+#### Constructor
+
+```dart
+const PackageTrackingItemDetails({
+  this.trackingNumber,
+  this.weight,
+  this.height,
+  this.length,
+  this.width,
+  this.dimensions,
+  this.packageTypeLabel,
+  this.sender,
+  this.recipient,
+  this.client,
+  this.mailbox,
+  this.status,
+  this.packageItem,
+});
+```
+
+#### fromJson()
+
+```dart
+factory PackageTrackingItemDetails.fromJson(Map<String, dynamic> json)
+```
+
+---
+
+### GetPackageTrackingDetailsResponse
+
+Complete response for package tracking details endpoint.
+
+#### Fields
+
+<ResponseField name="items" type="List<PackageTrackingItemDetails>" required>
+  List of tracking item details
+</ResponseField>
+
+<ResponseField name="allowUploadImages" type="bool" required>
+  Whether image uploads are allowed for this package
+</ResponseField>
+
+<ResponseField name="images" type="List<FileUrlResponse>" required>
+  List of image files associated with the package
+</ResponseField>
+
+<ResponseField name="packageStatus" type="String?">
+  Current status of the package
+</ResponseField>
+
+#### Constructors
+
+##### Default Constructor
+
+```dart
+const GetPackageTrackingDetailsResponse({
+  required this.items,
+  required this.allowUploadImages,
+  required this.images,
+  this.packageStatus,
+});
+```
+
+##### empty()
+
+```dart
+const GetPackageTrackingDetailsResponse.empty()
+```
+
+##### fromJson()
+
+<Note>
+  Handles both `images` and `urlImages` array formats. Images can be provided as objects or plain URL strings.
+</Note>
+
+```dart
+factory GetPackageTrackingDetailsResponse.fromJson(Map<String, dynamic> json)
+```
+
+**Example:**
+
+```dart
+final response = GetPackageTrackingDetailsResponse.fromJson({
+  'content': {
+    'items': [
+      {
+        'trackingNumber': 'TRACK123',
+        'weight': 2.5,
+        'status': 'In Transit',
+        'packageItem': {
+          'packageId': 1001,
+          'history': [
+            {
+              'event': 'Package picked up',
+              'dateTime': '2026-03-05T10:00:00Z'
+            }
+          ]
+        }
+      }
+    ],
+    'allowUploadImages': true,
+    'urlImages': ['https://example.com/img1.jpg'],
+    'packageStatus': 'Active'
+  }
+});
+```
+
+---
+
+## Package Image Models
+
+### PackageImageEncodeFile
+
+Represents an encoded image file for package image operations.
+
+#### Fields
+
+<ParamField path="identifier" type="String?">
+  Optional identifier for the image
+</ParamField>
+
+<ParamField path="encodeContent" type="String?">
+  Base64-encoded image content
+</ParamField>
+
+<ParamField path="fileExtension" type="String?">
+  File extension (e.g., "jpg", "png")
+</ParamField>
+
+<ParamField path="fileName" type="String?">
+  Name of the file
+</ParamField>
+
+<ParamField path="storedFileId" type="int?">
+  ID of a previously stored file
+</ParamField>
+
+#### Constructor
+
+```dart
+const PackageImageEncodeFile({
+  this.identifier,
+  this.encodeContent,
+  this.fileExtension,
+  this.fileName,
+  this.storedFileId,
+});
+```
+
+#### toJson()
+
+<Info>
+  Only includes non-null fields in the JSON output.
+</Info>
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+---
+
+### RegisterPackageImagesByMobileRequest
+
+Request to register images for an existing package.
+
+#### Fields
+
+<ParamField path="packageId" type="int" required>
+  ID of the package to attach images to
+</ParamField>
+
+<ParamField path="files" type="List<PackageImageEncodeFile>" required>
+  List of image files to register
+</ParamField>
+
+#### Constructor
+
+```dart
+const RegisterPackageImagesByMobileRequest({
+  required this.packageId,
+  required this.files,
+});
+```
+
+#### toJson()
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+---
+
+### DeleteTrackingPackageImagesRequest
+
+Request to delete images from a package.
+
+#### Fields
+
+<ParamField path="storedFileIds" type="List<int>" required>
+  List of stored file IDs to delete
+</ParamField>
+
+#### Constructor
+
+```dart
+const DeleteTrackingPackageImagesRequest({required this.storedFileIds});
+```
+
+#### toJson()
+
+```dart
+Map<String, dynamic> toJson()
+```
+
+**Example:**
+
+```dart
+final deleteRequest = DeleteTrackingPackageImagesRequest(
+  storedFileIds: [101, 102, 103],
+);
+
+await httpService.post('/delete-images', data: deleteRequest.toJson());
+```
+
+---
+
+## Usage Examples
+
+<CodeGroup>
+
+```dart Complete Package Registration Flow
+import 'package:logiscan/features/scan/models/register_models.dart';
+import 'package:logiscan/features/scan/models/verify_tracking_models.dart';
+
+Future<bool> registerNewPackage({
+  required String trackingNumber,
+  required double weight,
+  required double width,
+  required double length,
+  required double height,
+  List<RequestEncodeFile>? images,
+}) async {
+  // Step 1: Verify tracking number
+  final verifyRequest = VerifyTrackingNumberRequest(
+    trackingNumber: trackingNumber,
+  );
+  
+  final verifyResponse = await httpService.post(
+    '/verify-tracking',
+    data: verifyRequest.toJson(),
+  );
+  
+  final verification = VerifyTrackingNumberResponse.fromJson(
+    verifyResponse.content,
+  );
+  
+  if (verification.isRegistered) {
+    print('Package already registered on ${verification.registrationDateTime}');
+    return false;
+  }
+  
+  // Step 2: Register package
+  final registerRequest = RegisterPackageRequest(
+    trackingNumber: trackingNumber,
+    weight: weight,
+    width: width,
+    length: length,
+    height: height,
+    files: images,
+  );
+  
+  final registerResponse = await httpService.post(
+    '/register-package',
+    data: registerRequest.toJson(),
+  );
+  
+  return registerResponse.isSuccessful;
+}
+```
+
+```dart Fetch Package Details
+Future<GetPackageTrackingDetailsResponse> fetchPackageDetails(
+  String trackingNumber,
+) async {
+  final response = await httpService.get(
+    '/package-tracking-details',
+    queryParameters: {'trackingNumber': trackingNumber},
+  );
+  
+  final details = GetPackageTrackingDetailsResponse.fromJson(
+    response.content,
+  );
+  
+  // Display package information
+  for (final item in details.items) {
+    print('Tracking: ${item.trackingNumber}');
+    print('Status: ${item.status}');
+    print('Dimensions: ${item.length} x ${item.width} x ${item.height}');
+    
+    if (item.packageItem != null) {
+      print('History:');
+      for (final event in item.packageItem!.history) {
+        print('  - ${event.event} at ${event.dateTime}');
+      }
+    }
+  }
+  
+  // Display images
+  print('Package has ${details.images.length} images');
+  print('Upload allowed: ${details.allowUploadImages}');
+  
+  return details;
+}
+```
+
+```dart Manage Package Images
+Future<void> addImagesToPackage(
+  int packageId,
+  List<List<int>> imageBytesList,
+) async {
+  final files = imageBytesList.map((bytes) {
+    return PackageImageEncodeFile(
+      encodeContent: base64.encode(bytes),
+      fileExtension: 'jpg',
+      fileName: 'package_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+  }).toList();
+  
+  final request = RegisterPackageImagesByMobileRequest(
+    packageId: packageId,
+    files: files,
+  );
+  
+  await httpService.post(
+    '/register-package-images',
+    data: request.toJson(),
+  );
+}
+
+Future<void> removeImagesFromPackage(List<int> fileIds) async {
+  final request = DeleteTrackingPackageImagesRequest(
+    storedFileIds: fileIds,
+  );
+  
+  await httpService.post(
+    '/delete-package-images',
+    data: request.toJson(),
+  );
+}
+```
+
+</CodeGroup>
+
+---
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Measurement Models" icon="ruler-combined" href="/api/measurement-models">
+    Models for package measurements and OCR
+  </Card>
+  <Card title="API Response" icon="reply" href="/api/api-response">
+    Generic API response wrapper
+  </Card>
+</CardGroup>

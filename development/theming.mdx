@@ -1,0 +1,655 @@
+---
+title: Theming
+description: Customize LogiScan's visual appearance and design system
+---
+
+## Overview
+
+LogiScan uses a centralized theming system based on Flutter's Material Design 3. The theme is defined in `lib/core/theme/app_theme.dart` and provides a consistent design language across the entire application.
+
+## Theme Configuration
+
+The `AppTheme` class contains all theme-related constants and configurations:
+
+```dart lib/core/theme/app_theme.dart
+import 'package:flutter/material.dart';
+
+class AppTheme {
+  const AppTheme._();
+
+  // Neutral palette inspired by logistics UI (light background, dark text)
+  static const Color primary = Color(0xFF111827); // near-black
+  static const Color accentBlue = Color(0xFF111827);
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceAlt = Color(0xFFF3F4F6); // light gray background
+
+  static ThemeData get lightTheme {
+    final base = ThemeData(
+      fontFamily: 'Roboto',
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accentBlue,
+        brightness: Brightness.light,
+      ).copyWith(
+        primary: primary,
+        secondary: primary,
+      ),
+      scaffoldBackgroundColor: surfaceAlt,
+    );
+
+    return base.copyWith(
+      appBarTheme: const AppBarTheme(
+        backgroundColor: surfaceAlt,
+        foregroundColor: primary,
+        elevation: 0,
+        centerTitle: false,
+      ),
+      cardColor: surface,
+      textTheme: base.textTheme.apply(
+        bodyColor: primary,
+        displayColor: primary,
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
+      ),
+    );
+  }
+}
+```
+
+## Color Palette
+
+### Primary Colors
+
+<CardGroup cols={2}>
+  <Card title="Primary" icon="palette">
+    **Color:** `#111827` (Near Black)
+    
+    Used for primary UI elements, text, and navigation.
+    
+    ```dart
+    AppTheme.primary
+    ```
+  </Card>
+  
+  <Card title="Accent Blue" icon="droplet">
+    **Color:** `#111827` (Near Black)
+    
+    Currently matches primary, but can be customized for accent elements.
+    
+    ```dart
+    AppTheme.accentBlue
+    ```
+  </Card>
+</CardGroup>
+
+### Surface Colors
+
+<CardGroup cols={2}>
+  <Card title="Surface" icon="square">
+    **Color:** `#FFFFFF` (White)
+    
+    Used for cards, dialogs, and elevated surfaces.
+    
+    ```dart
+    AppTheme.surface
+    ```
+  </Card>
+  
+  <Card title="Surface Alt" icon="layer-group">
+    **Color:** `#F3F4F6` (Light Gray)
+    
+    Used for background and contrasting surfaces.
+    
+    ```dart
+    AppTheme.surfaceAlt
+    ```
+  </Card>
+</CardGroup>
+
+### Semantic Colors
+
+For success, warning, and error states, LogiScan uses standard Material colors:
+
+<CodeGroup>
+```dart Success
+Colors.green
+Icons.check_circle_outline
+```
+
+```dart Warning
+Colors.orange
+Icons.warning_amber_rounded
+```
+
+```dart Error
+Colors.red
+Icons.error_outline
+```
+</CodeGroup>
+
+These are used in the `MessageHelper` for user feedback:
+
+```dart lib/core/presentation/message_helper.dart
+final Color color;
+final IconData icon;
+if (isWarning) {
+  color = Colors.orange;
+  icon = Icons.warning_amber_rounded;
+} else if (isSuccess) {
+  color = Colors.green;
+  icon = Icons.check_circle_outline;
+} else {
+  color = Colors.red;
+  icon = Icons.error_outline;
+}
+```
+
+## Typography
+
+### Font Family
+
+LogiScan uses **Roboto** as the default font family:
+
+```dart
+ThemeData(
+  fontFamily: 'Roboto',
+  useMaterial3: true,
+  // ...
+)
+```
+
+### Text Styles
+
+Flutter's Material 3 text theme is applied with the primary color:
+
+```dart
+textTheme: base.textTheme.apply(
+  bodyColor: primary,
+  displayColor: primary,
+)
+```
+
+**Available text styles:**
+
+| Style | Usage | Example |
+|-------|-------|----------|
+| `displayLarge` | Large headers | Page titles |
+| `displayMedium` | Medium headers | Section headers |
+| `displaySmall` | Small headers | Subsections |
+| `headlineLarge` | Primary headlines | Card titles |
+| `headlineMedium` | Secondary headlines | Dialog titles |
+| `titleLarge` | List titles | Item titles |
+| `titleMedium` | Subtitles | Item subtitles |
+| `bodyLarge` | Body text (large) | Primary content |
+| `bodyMedium` | Body text | Standard content |
+| `bodySmall` | Small body text | Captions |
+| `labelLarge` | Button text | Call-to-action buttons |
+
+### Using Text Styles
+
+```dart
+Text(
+  'Welcome to LogiScan',
+  style: Theme.of(context).textTheme.displayLarge,
+)
+
+Text(
+  'Scan packages quickly and efficiently',
+  style: Theme.of(context).textTheme.bodyMedium,
+)
+```
+
+## Component Theming
+
+### AppBar
+
+App bars use a clean, minimalist design:
+
+```dart
+appBarTheme: const AppBarTheme(
+  backgroundColor: surfaceAlt,  // Light gray
+  foregroundColor: primary,     // Near black text
+  elevation: 0,                 // No shadow
+  centerTitle: false,           // Left-aligned title
+)
+```
+
+**Example AppBar:**
+
+```dart
+AppBar(
+  title: const Text('LogiScan'),
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.settings),
+      onPressed: () {},
+    ),
+  ],
+)
+```
+
+### Cards
+
+Cards use the primary surface color (white):
+
+```dart
+cardColor: surface,
+```
+
+**Example Card:**
+
+```dart
+Card(
+  child: Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Package Info',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Tracking: ABC123456',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
+    ),
+  ),
+)
+```
+
+### Input Fields
+
+Input fields have rounded corners and filled backgrounds:
+
+```dart
+inputDecorationTheme: const InputDecorationTheme(
+  filled: true,
+  fillColor: Colors.white,
+  border: OutlineInputBorder(
+    borderRadius: BorderRadius.all(Radius.circular(12)),
+  ),
+)
+```
+
+**Example TextField:**
+
+```dart
+TextField(
+  decoration: const InputDecoration(
+    labelText: 'Username',
+    hintText: 'Enter your username',
+    prefixIcon: Icon(Icons.person),
+  ),
+)
+```
+
+### Buttons
+
+Buttons inherit from the theme's color scheme:
+
+<CodeGroup>
+```dart Elevated Button
+ElevatedButton(
+  onPressed: () {},
+  child: const Text('Submit'),
+)
+```
+
+```dart Outlined Button
+OutlinedButton(
+  onPressed: () {},
+  child: const Text('Cancel'),
+)
+```
+
+```dart Text Button
+TextButton(
+  onPressed: () {},
+  child: const Text('Skip'),
+)
+```
+</CodeGroup>
+
+### SnackBars
+
+SnackBars use custom styling via `MessageHelper`:
+
+```dart lib/core/presentation/message_helper.dart
+ScaffoldMessenger.of(context).showSnackBar(
+  SnackBar(
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: color,
+    margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    ),
+    duration: Duration(seconds: isSuccess ? 3 : 4),
+    content: Row(
+      children: [
+        Icon(icon, color: Colors.white),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.white),
+          ),
+        ),
+      ],
+    ),
+  ),
+);
+```
+
+**Usage:**
+
+```dart
+// Success message
+MessageHelper.showIconSnackBar(
+  context,
+  message: 'Login successful',
+  isSuccess: true,
+);
+
+// Error message
+MessageHelper.showIconSnackBar(
+  context,
+  message: 'Login failed',
+  isSuccess: false,
+);
+
+// Warning message
+MessageHelper.showIconSnackBar(
+  context,
+  message: 'Session about to expire',
+  isWarning: true,
+);
+```
+
+## Loading Indicator
+
+LogiScan includes a reusable loading widget:
+
+```dart lib/core/presentation/widgets/loading_indicator.dart
+class LoadingIndicator extends StatelessWidget {
+  final String? message;
+
+  const LoadingIndicator({super.key, this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          if (message != null) ..[
+            const SizedBox(height: 16),
+            Text(
+              message!,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+```
+
+**Usage:**
+
+```dart
+if (isLoading)
+  const LoadingIndicator(message: 'Logging in...')
+else
+  // Your content
+```
+
+## Customizing the Theme
+
+### Changing Colors
+
+To customize the color palette, modify the constants in `app_theme.dart`:
+
+```dart lib/core/theme/app_theme.dart
+class AppTheme {
+  // Change these values
+  static const Color primary = Color(0xFF1E40AF);      // New primary color
+  static const Color accentBlue = Color(0xFF3B82F6);   // New accent
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color surfaceAlt = Color(0xFFF1F5F9);  // New background
+}
+```
+
+### Adding Custom Colors
+
+Add new color constants for specific use cases:
+
+```dart lib/core/theme/app_theme.dart
+class AppTheme {
+  // Existing colors...
+  
+  // Custom colors
+  static const Color success = Color(0xFF10B981);
+  static const Color warning = Color(0xFFF59E0B);
+  static const Color error = Color(0xFFEF4444);
+  static const Color info = Color(0xFF3B82F6);
+}
+```
+
+Use them in your widgets:
+
+```dart
+Container(
+  color: AppTheme.success,
+  child: const Text('Success'),
+)
+```
+
+### Changing Typography
+
+To use a custom font:
+
+<Steps>
+  <Step title="Add Font Files">
+    Add font files to `assets/fonts/`:
+    ```
+    assets/
+    └── fonts/
+        ├── CustomFont-Regular.ttf
+        ├── CustomFont-Bold.ttf
+        └── CustomFont-Italic.ttf
+    ```
+  </Step>
+
+  <Step title="Update pubspec.yaml">
+    Declare the fonts:
+    ```yaml pubspec.yaml
+    flutter:
+      fonts:
+        - family: CustomFont
+          fonts:
+            - asset: assets/fonts/CustomFont-Regular.ttf
+            - asset: assets/fonts/CustomFont-Bold.ttf
+              weight: 700
+            - asset: assets/fonts/CustomFont-Italic.ttf
+              style: italic
+    ```
+  </Step>
+
+  <Step title="Update AppTheme">
+    Change the font family:
+    ```dart lib/core/theme/app_theme.dart
+    ThemeData(
+      fontFamily: 'CustomFont',
+      // ...
+    )
+    ```
+  </Step>
+</Steps>
+
+### Dark Theme (Future Enhancement)
+
+To add dark theme support:
+
+```dart lib/core/theme/app_theme.dart
+class AppTheme {
+  // Light theme colors...
+  
+  // Dark theme colors
+  static const Color darkPrimary = Color(0xFFE5E7EB);
+  static const Color darkSurface = Color(0xFF1F2937);
+  static const Color darkSurfaceAlt = Color(0xFF111827);
+  
+  static ThemeData get darkTheme {
+    final base = ThemeData(
+      fontFamily: 'Roboto',
+      useMaterial3: true,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: accentBlue,
+        brightness: Brightness.dark,
+      ),
+      scaffoldBackgroundColor: darkSurfaceAlt,
+    );
+    
+    return base.copyWith(
+      appBarTheme: AppBarTheme(
+        backgroundColor: darkSurfaceAlt,
+        foregroundColor: darkPrimary,
+        elevation: 0,
+      ),
+      cardColor: darkSurface,
+      // ...
+    );
+  }
+}
+```
+
+Use it in `main.dart`:
+
+```dart lib/main.dart
+MaterialApp(
+  theme: AppTheme.lightTheme,
+  darkTheme: AppTheme.darkTheme,
+  themeMode: ThemeMode.system, // Respects system preference
+  // ...
+)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always use theme colors">
+    Instead of hardcoding colors, always reference the theme:
+    
+    ```dart
+    // Bad
+    Container(color: Color(0xFF111827))
+    
+    // Good
+    Container(color: AppTheme.primary)
+    // or
+    Container(color: Theme.of(context).colorScheme.primary)
+    ```
+  </Accordion>
+
+  <Accordion title="Use theme text styles">
+    Apply text styles from the theme instead of creating custom ones:
+    
+    ```dart
+    // Bad
+    Text('Hello', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold))
+    
+    // Good
+    Text('Hello', style: Theme.of(context).textTheme.headlineMedium)
+    ```
+  </Accordion>
+
+  <Accordion title="Maintain consistency">
+    Use the same spacing, border radius, and elevation values throughout:
+    
+    ```dart
+    // Standard spacing
+    const EdgeInsets.all(16)      // Standard padding
+    const EdgeInsets.all(8)       // Small padding
+    const SizedBox(height: 16)    // Standard spacing
+    
+    // Standard border radius
+    BorderRadius.circular(12)     // Input fields, cards
+    BorderRadius.circular(8)      // Buttons
+    ```
+  </Accordion>
+
+  <Accordion title="Test on multiple devices">
+    Verify your theme looks good on:
+    - Different screen sizes (phone, tablet)
+    - Light and dark system themes
+    - Various Android and iOS versions
+  </Accordion>
+</AccordionGroup>
+
+## Accessing Theme in Widgets
+
+### Using Theme.of(context)
+
+```dart
+class MyWidget extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Container(
+      color: theme.colorScheme.primary,
+      child: Text(
+        'Themed Text',
+        style: theme.textTheme.bodyLarge,
+      ),
+    );
+  }
+}
+```
+
+### Using Builder
+
+For immediate access in the same build method:
+
+```dart
+MaterialApp(
+  theme: AppTheme.lightTheme,
+  home: Builder(
+    builder: (context) {
+      final theme = Theme.of(context);
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        // ...
+      );
+    },
+  ),
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup" icon="gear" href="/development/setup">
+    Set up your development environment
+  </Card>
+  <Card title="Project Structure" icon="folder-tree" href="/development/project-structure">
+    Understand the codebase
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/development/error-handling">
+    Learn error handling patterns
+  </Card>
+  <Card title="UI Components" icon="layer-group" href="/features/authentication">
+    Explore UI components
+  </Card>
+</CardGroup>

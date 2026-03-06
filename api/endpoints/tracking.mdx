@@ -1,0 +1,492 @@
+---
+title: Tracking Endpoints
+description: API endpoints for package tracking, verification, and image management
+---
+
+## Overview
+
+The tracking endpoints handle package verification, tracking details retrieval, and package image management for existing packages.
+
+**Base URL**: `https://beehive.gbilogistics.net/api/mobile/v1.0`
+
+**Authentication**: All endpoints require a valid JWT token
+
+## Endpoints
+
+### POST /Tracking/verify-tracking-number
+
+Verify if a tracking number exists in the system and check for duplicate scans.
+
+**Endpoint**: `/api/mobile/v1.0/Tracking/verify-tracking-number`
+
+**Request Body**:
+
+<ParamField path="trackingNumber" type="string" required>
+  The tracking number to verify
+</ParamField>
+
+<ParamField path="userVerificationDate" type="string" required>
+  ISO 8601 timestamp of verification
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "trackingNumber": "1Z999AA10123456784",
+  "userVerificationDate": "2024-03-06T14:30:00.000Z"
+}
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  Verification result
+  
+  <Expandable title="content properties">
+    <ResponseField name="alreadyExists" type="boolean">
+      True if the tracking number exists in the system
+    </ResponseField>
+    
+    <ResponseField name="lastScannedDate" type="string">
+      ISO 8601 timestamp of the last scan (if exists)
+    </ResponseField>
+    
+    <ResponseField name="packageId" type="string">
+      Internal package ID (if exists)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": "Tracking number verified",
+  "content": {
+    "alreadyExists": true,
+    "lastScannedDate": "2024-03-05T10:15:00.000Z",
+    "packageId": "pkg_abc123xyz"
+  }
+}
+```
+
+**Usage Example**:
+
+```dart measurement_service.dart:66-90
+Future<ApiResponse<VerifyTrackingNumberResponse>> verifyTrackingNumber(
+  VerifyTrackingNumberRequest request,
+) async {
+  try {
+    final response = await _http.post<VerifyTrackingNumberResponse>(
+      ApiEndpoints.verifyTrackingNumber,
+      request.toJson(),
+      (json) => VerifyTrackingNumberResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const VerifyTrackingNumberResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const VerifyTrackingNumberResponse.empty(),
+    );
+  }
+}
+```
+
+<Note>
+  This endpoint is typically called before registering a new package to prevent duplicate entries and warn users about recent scans.
+</Note>
+
+---
+
+### GET /Tracking/get-package-tracking-details
+
+Retrieve comprehensive tracking information for a package, including history, photos, and service details.
+
+**Endpoint**: `/api/mobile/v1.0/Tracking/get-package-tracking-details`
+
+**Query Parameters**:
+
+<ParamField query="identifier" type="string" required>
+  Package tracking number or internal package ID
+</ParamField>
+
+**Example Request**:
+
+```bash
+GET /api/mobile/v1.0/Tracking/get-package-tracking-details?identifier=1Z999AA10123456784
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  Package tracking details
+  
+  <Expandable title="content properties">
+    <ResponseField name="packageTrackingItems" type="array">
+      Array of tracking entries for this identifier
+      
+      <Expandable title="tracking item properties">
+        <ResponseField name="packageDetails" type="object">
+          Basic package information
+          
+          <Expandable title="package details">
+            <ResponseField name="packageId" type="string">
+              Internal package ID
+            </ResponseField>
+            <ResponseField name="trackingNumber" type="string">
+              Tracking number
+            </ResponseField>
+            <ResponseField name="weight" type="double">
+              Package weight
+            </ResponseField>
+            <ResponseField name="width" type="double">
+              Package width
+            </ResponseField>
+            <ResponseField name="length" type="double">
+              Package length
+            </ResponseField>
+            <ResponseField name="height" type="double">
+              Package height
+            </ResponseField>
+            <ResponseField name="creationDate" type="string">
+              Package creation timestamp
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="packageServiceDetails" type="object">
+          Service information
+          
+          <Expandable title="service details">
+            <ResponseField name="serviceName" type="string">
+              Shipping service name
+            </ResponseField>
+            <ResponseField name="serviceCode" type="string">
+              Service code
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="packageTrackingHistory" type="array">
+          Chronological history of package events
+          
+          <Expandable title="history entry properties">
+            <ResponseField name="historyDate" type="string">
+              Event timestamp
+            </ResponseField>
+            <ResponseField name="statusName" type="string">
+              Status name
+            </ResponseField>
+            <ResponseField name="statusCode" type="string">
+              Status code
+            </ResponseField>
+            <ResponseField name="location" type="string">
+              Event location
+            </ResponseField>
+            <ResponseField name="description" type="string">
+              Event description
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="packageImages" type="array">
+          Package photos
+          
+          <Expandable title="image properties">
+            <ResponseField name="imageOrder" type="int">
+              Display order (0-based)
+            </ResponseField>
+            <ResponseField name="imageUrl" type="string">
+              Full URL to the image
+            </ResponseField>
+            <ResponseField name="imageGuid" type="string">
+              Unique image identifier for deletion
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": null,
+  "content": {
+    "packageTrackingItems": [
+      {
+        "packageDetails": {
+          "packageId": "pkg_abc123xyz",
+          "trackingNumber": "1Z999AA10123456784",
+          "weight": 2.5,
+          "width": 12.0,
+          "length": 18.0,
+          "height": 6.0,
+          "creationDate": "2024-03-05T10:15:00.000Z"
+        },
+        "packageServiceDetails": {
+          "serviceName": "UPS Ground",
+          "serviceCode": "03"
+        },
+        "packageTrackingHistory": [
+          {
+            "historyDate": "2024-03-05T10:15:00.000Z",
+            "statusName": "Received",
+            "statusCode": "REC",
+            "location": "Distribution Center - Miami, FL",
+            "description": "Package received at facility"
+          },
+          {
+            "historyDate": "2024-03-05T14:30:00.000Z",
+            "statusName": "In Transit",
+            "statusCode": "IT",
+            "location": "On vehicle for delivery",
+            "description": "Out for delivery"
+          }
+        ],
+        "packageImages": [
+          {
+            "imageOrder": 0,
+            "imageUrl": "https://storage.example.com/images/pkg_abc123xyz_1.jpg",
+            "imageGuid": "img_guid_001"
+          },
+          {
+            "imageOrder": 1,
+            "imageUrl": "https://storage.example.com/images/pkg_abc123xyz_2.jpg",
+            "imageGuid": "img_guid_002"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Usage Example**:
+
+```dart measurement_service.dart:118-145
+Future<ApiResponse<GetPackageTrackingDetailsResponse>>
+    getPackageTrackingDetails(
+  String trackingNumber,
+) async {
+  try {
+    final response = await _http.get<GetPackageTrackingDetailsResponse>(
+      ApiEndpoints.getPackageTrackingDetails,
+      (json) => GetPackageTrackingDetailsResponse.fromJson(json),
+      queryParams: {
+        'identifier': trackingNumber,
+      },
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GetPackageTrackingDetailsResponse.empty(),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GetPackageTrackingDetailsResponse.empty(),
+    );
+  }
+}
+```
+
+<Tip>
+  The `identifier` parameter accepts both tracking numbers and internal package IDs, making it flexible for different lookup scenarios.
+</Tip>
+
+---
+
+### POST /Tracking/register-package-images
+
+Add new images to an existing package.
+
+**Endpoint**: `/api/mobile/v1.0/Tracking/register-package-images`
+
+**Request Body**:
+
+<ParamField path="packageId" type="string" required>
+  Internal package ID
+</ParamField>
+
+<ParamField path="images" type="array" required>
+  Array of image files to add
+  
+  <Expandable title="image object properties">
+    <ParamField path="order" type="int" required>
+      Display order (0-based)
+    </ParamField>
+    
+    <ParamField path="encodeContent" type="string" required>
+      Base64-encoded image data
+    </ParamField>
+    
+    <ParamField path="fileExtension" type="string" required>
+      Image file extension (e.g., "jpg")
+    </ParamField>
+    
+    <ParamField path="fileName" type="string" required>
+      Original filename
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "packageId": "pkg_abc123xyz",
+  "images": [
+    {
+      "order": 0,
+      "encodeContent": "iVBORw0KGgoAAAANSUhEUgAA...",
+      "fileExtension": "jpg",
+      "fileName": "photo_1.jpg"
+    },
+    {
+      "order": 1,
+      "encodeContent": "iVBORw0KGgoAAAANSUhEUgBB...",
+      "fileExtension": "jpg",
+      "fileName": "photo_2.jpg"
+    }
+  ]
+}
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  <Expandable title="content properties">
+    <ResponseField name="userMessage" type="string">
+      Success message to display to the user
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  Images are reordered automatically by the mobile app using drag-and-drop. The `order` field ensures images display in the correct sequence.
+</Note>
+
+---
+
+### DELETE /Tracking/delete-tracking-images
+
+Delete specific images from a package.
+
+**Endpoint**: `/api/mobile/v1.0/Tracking/delete-tracking-images`
+
+**Request Body**:
+
+<ParamField path="imageGuids" type="array" required>
+  Array of image GUIDs to delete
+</ParamField>
+
+**Example Request**:
+
+```json
+{
+  "imageGuids": [
+    "img_guid_001",
+    "img_guid_002"
+  ]
+}
+```
+
+**Response**:
+
+<ResponseField name="content" type="object">
+  <Expandable title="content properties">
+    <ResponseField name="userMessage" type="string">
+      Success message
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Usage Example**:
+
+```dart measurement_service.dart:173-197
+Future<ApiResponse<GenericOperationResponse>> deleteTrackingPackageImages(
+  DeleteTrackingPackageImagesRequest request,
+) async {
+  try {
+    final response = await _http.delete<GenericOperationResponse>(
+      ApiEndpoints.deleteTrackingImages,
+      request.toJson(),
+      (json) => GenericOperationResponse.fromJson(json),
+    );
+
+    if (!response.isSuccessful) {
+      return ApiResponse.error(
+        messageDetail: response.messageDetail,
+        content: const GenericOperationResponse(userMessage: null),
+      );
+    }
+
+    return response;
+  } catch (_) {
+    return ApiResponse.error(
+      messageDetail: null,
+      content: const GenericOperationResponse(userMessage: null),
+    );
+  }
+}
+```
+
+<Warning>
+  Image deletion is permanent. The mobile app should confirm the action with the user before calling this endpoint.
+</Warning>
+
+---
+
+## Common Response Structure
+
+All endpoints return a standardized response format:
+
+```json
+{
+  "code": 1,
+  "message": "Success",
+  "messageDetail": "Optional detailed message",
+  "content": { /* endpoint-specific data */ }
+}
+```
+
+**Response Codes**:
+- `1` = Success
+- `2+` = Error (see [Error Handling](/development/error-handling) for full list)
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="MeasurementService" icon="cube" href="/api/measurement-service">
+    Service implementation for tracking operations
+  </Card>
+  <Card title="Tracking Models" icon="database" href="/api/tracking-models">
+    Request and response data models
+  </Card>
+  <Card title="Package Tracking" icon="location-dot" href="/features/package-tracking">
+    Package tracking feature guide
+  </Card>
+  <Card title="API Integration" icon="plug" href="/architecture/api-integration">
+    API integration architecture
+  </Card>
+</CardGroup>

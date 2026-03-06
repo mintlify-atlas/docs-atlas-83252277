@@ -1,80 +1,194 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: 'Quickstart'
+description: 'Get LogiScan up and running in minutes'
+icon: 'rocket'
 ---
 
-## Get started in three steps
+Get started with LogiScan in just a few steps. This guide will help you set up and run the application quickly.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have the following installed:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- **Flutter SDK** (3.9.2 or higher)
+- **Git**
+- **Android Studio** or **Xcode** (depending on your target platform)
+- **Firebase CLI** (for Firebase configuration)
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+If you haven't installed Flutter yet, check out our [Installation](/installation) guide for detailed setup instructions.
 </Note>
+
+## Quick Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    Clone the LogiScan repository to your local machine:
+
+    ```bash
+    git clone <repository-url>
+    cd logiscan
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install all required Flutter packages:
+
+    ```bash
+    flutter pub get
+    ```
+
+    This will install all dependencies defined in `pubspec.yaml`, including:
+    - Firebase Core & Crashlytics
+    - Provider for state management
+    - Mobile scanner for barcode scanning
+    - Image picker for camera functionality
+    - HTTP client for API communication
+  </Step>
+
+  <Step title="Configure Firebase">
+    LogiScan uses Firebase for crash reporting and analytics. The Firebase configuration is already included in the project:
+
+    - Android: `android/app/google-services.json`
+    - iOS: `ios/Runner/GoogleService-Info.plist` (if applicable)
+    - Generated options: `lib/firebase_options.dart`
+
+    <Warning>
+    For production deployment, you'll need to replace the Firebase configuration files with your own project credentials.
+    </Warning>
+
+    The app will automatically initialize Firebase on startup:
+
+    ```dart lib/main.dart:20-26
+    Future<void> main() async {
+      WidgetsFlutterBinding.ensureInitialized();
+      
+      // Initialize Firebase
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    ```
+  </Step>
+
+  <Step title="Configure API Environment">
+    Update the API configuration based on your environment. Open `lib/core/config/api_config.dart` and set the appropriate mode:
+
+    ```dart lib/core/config/api_config.dart:15-19
+    /// Modo de desarrollo (cambiar a false para producción)
+    static const bool isDevelopment = false;
+
+    /// URL base de la API (selecciona según el modo)
+    static String get baseUrl => isDevelopment ? devBaseUrl : prodBaseUrl;
+    ```
+
+    **Available environments:**
+    - Development: `http://100.104.120.121:82`
+    - Production: `https://beehive.gbilogistics.net`
+
+    <Note>
+    Set `isDevelopment = true` for local testing, or `false` to connect to production servers.
+    </Note>
+  </Step>
+
+  <Step title="Run the Application">
+    Connect your device or start an emulator, then run:
+
+    ```bash
+    flutter run
+    ```
+
+    For a specific platform:
+
+    <CodeGroup>
+    ```bash Android
+    flutter run -d android
+    ```
+
+    ```bash iOS
+    flutter run -d ios
+    ```
+
+    ```bash Release Mode
+    flutter run --release
+    ```
+    </CodeGroup>
+
+    The app will launch and display the authentication screen.
+  </Step>
+</Steps>
+
+## Verify Your Setup
+
+Once the app is running, you should see:
+
+1. **Authentication Screen** - The login page where users can enter credentials
+2. **Firebase Connection** - Check your Firebase console for crash reporting initialization
+3. **API Connectivity** - The app will attempt to connect to the configured API endpoint
+
+<Note>
+The application requires valid credentials to log in. Contact your system administrator for test credentials.
+</Note>
+
+## Next Steps
+
+Now that you have LogiScan running, explore these topics:
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/architecture/overview">
+    Learn about the app's structure and design patterns
+  </Card>
+  
+  <Card title="Core Features" icon="sparkles" href="/features/scanning">
+    Discover barcode scanning, image processing, and more
+  </Card>
+  
+  <Card title="API Integration" icon="plug" href="/api/auth-service">
+    Understand how LogiScan communicates with backend services
+  </Card>
+  
+  <Card title="Deployment" icon="rocket" href="/installation">
+    Deploy LogiScan to production environments
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Build Errors
+
+If you encounter build errors, try:
+
+```bash
+flutter clean
+flutter pub get
+flutter run
+```
+
+### Firebase Issues
+
+If Firebase initialization fails:
+
+1. Verify `google-services.json` is in `android/app/`
+2. Check that Firebase project ID matches in all config files
+3. Ensure FlutterFire CLI configuration is up to date
+
+### API Connection Problems
+
+If the app cannot connect to the API:
+
+1. Verify the `isDevelopment` flag in `api_config.dart`
+2. Check network connectivity
+3. Ensure the API endpoint is accessible from your device/emulator
+4. Review logs for specific error messages
+
+<Warning>
+When running on an Android emulator, `localhost` refers to the emulator itself, not your host machine. Use `10.0.2.2` instead of `localhost` or configure the appropriate IP address.
+</Warning>
+
+## Getting Help
+
+If you're stuck, check out:
+
+- Review the [Installation](/installation) guide for detailed platform setup
+- Check the logs: `flutter logs`
+- Examine Firebase Crashlytics for runtime errors
+- Contact the development team for API credentials and access
